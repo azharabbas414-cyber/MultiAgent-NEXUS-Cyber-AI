@@ -49,3 +49,7 @@ The Response & Automation Agent only prepares response artifacts for human revie
 python3 -m pip install -r requirements.txt
 python3 -m streamlit run app.py
 ```
+
+
+### Streamlit/CrewAI execution note
+The Streamlit SOC Investigation page runs the CrewAI Flow in a background worker and polls a thread-safe job registry. The worker never calls Streamlit APIs, preventing `NoSessionContext` errors caused by UI calls from CrewAI execution contexts.

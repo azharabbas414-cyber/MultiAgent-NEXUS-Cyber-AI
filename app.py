@@ -1,10 +1,94 @@
 import streamlit as st
 import pandas as pd
 
+import threading
+import time
+import uuid
+
 from config import APP_NAME, APP_FULL_NAME, SAMPLE_DATA_PATH
 from data_loader import load_uploaded_file, load_from_url, prepare_dataset
 from agents import AGENT_NAMES, agent_status_template
 from workflow import run_workflow
+
+
+# CrewAI Flow may execute work outside Streamlit's ScriptRunner context.
+# Therefore the background worker NEVER calls Streamlit APIs. It only updates
+# this thread-safe in-process job registry; the Streamlit page polls it.
+_WORKFLOW_JOBS = {}
+_WORKFLOW_LOCK = threading.Lock()
+
+
+def _new_workflow_job(df, incident_id):
+    job_id = uuid.uuid4().hex
+    with _WORKFLOW_LOCK:
+        _WORKFLOW_JOBS[job_id] = {
+            "status": "running",
+            "current_agent": "",
+            "detail": "Starting investigation",
+            "completed_steps": 0,
+            "total_steps": 5,
+            "statuses": {name: "Waiting" for name in AGENT_NAMES},
+            "result": None,
+            "error": None,
+        }
+
+    def update_status(agent_name, status, detail):
+        with _WORKFLOW_LOCK:
+            job = _WORKFLOW_JOBS.get(job_id)
+            if not job:
+                return
+            job["statuses"][agent_name] = status
+            job["detail"] = detail
+            job["current_agent"] = agent_name if status == "WORKING" else job.get("current_agent", "")
+            if status == "Completed":
+                job["completed_steps"] = {
+                    "SOC Orchestrator Agent": 1,
+                    "Security Analysis Agent": 2,
+                    "Threat Intelligence Agent": 3,
+                    "Risk & Business Agent": 4,
+                    "Response & Automation Agent": 5,
+                }.get(agent_name, job["completed_steps"])
+
+    def worker():
+        try:
+            result = run_workflow(df, incident_id, update_status)
+            with _WORKFLOW_LOCK:
+                job = _WORKFLOW_JOBS.get(job_id)
+                if job:
+                    job["result"] = result
+                    job["status"] = "completed"
+                    job["completed_steps"] = 5
+                    job["current_agent"] = ""
+                    job["detail"] = "Investigation complete"
+                    job["statuses"] = result.get("statuses", job["statuses"])
+        except Exception as exc:
+            with _WORKFLOW_LOCK:
+                job = _WORKFLOW_JOBS.get(job_id)
+                if job:
+                    job["status"] = "failed"
+                    job["error"] = f"{type(exc).__name__}: {exc}"
+                    job["detail"] = "Workflow failed"
+
+    threading.Thread(target=worker, daemon=True).start()
+    return job_id
+
+
+def _workflow_snapshot(job_id):
+    with _WORKFLOW_LOCK:
+        job = _WORKFLOW_JOBS.get(job_id)
+        if job is None:
+            return None
+        return {
+            "status": job["status"],
+            "current_agent": job["current_agent"],
+            "detail": job["detail"],
+            "completed_steps": job["completed_steps"],
+            "total_steps": job["total_steps"],
+            "statuses": dict(job["statuses"]),
+            "result": job["result"],
+            "error": job["error"],
+        }
+
 
 st.set_page_config(page_title=APP_NAME, page_icon="🛡️", layout="wide")
 
@@ -30,6 +114,8 @@ if "source_type" not in st.session_state:
     st.session_state.source_type = None
 if "workflow_result" not in st.session_state:
     st.session_state.workflow_result = None
+if "workflow_job_id" not in st.session_state:
+    st.session_state.workflow_job_id = None
 
 if page == "Data Sources":
     st.subheader("📥 Load Security Data")
@@ -191,51 +277,46 @@ else:
         st.divider()
         st.subheader("Live Agent Workflow")
 
+        job_id = st.session_state.workflow_job_id
+        snapshot = _workflow_snapshot(job_id) if job_id else None
+
+        # Start button only creates a background job. The worker never touches
+        # Streamlit, which avoids NoSessionContext from CrewAI async execution.
+        if st.button("🚀 Start AI Investigation", type="primary", use_container_width=True, disabled=bool(snapshot and snapshot["status"] == "running")):
+            st.session_state.workflow_result = None
+            st.session_state.workflow_job_id = _new_workflow_job(df.copy(), incident_id)
+            st.rerun()
+
+        snapshot = _workflow_snapshot(st.session_state.workflow_job_id) if st.session_state.workflow_job_id else None
+
         status_placeholders = {}
-        detail_placeholder = st.empty()
         for name in AGENT_NAMES:
             row = st.container()
             c1, c2 = row.columns([3, 2])
             c1.markdown(f"**{name}**")
             status_placeholders[name] = c2.empty()
-            status_placeholders[name].write("⏳ Waiting")
+            status = snapshot["statuses"].get(name, "Waiting") if snapshot else "Waiting"
+            icon = "▶️" if status == "WORKING" else ("✅" if status == "Completed" else "⏳")
+            status_placeholders[name].markdown(f"{icon} **{status}**")
 
         current_placeholder = st.empty()
         progress = st.progress(0, text="Ready to start")
 
-        def update_status(agent_name: str, status: str, detail: str) -> None:
-            for name in AGENT_NAMES:
-                if name == agent_name:
-                    icon = "▶️" if status == "WORKING" else ("✅" if status == "Completed" else "⏳")
-                    status_placeholders[name].markdown(f"{icon} **{status}**")
-                elif status_placeholders.get(name) is not None:
-                    # Preserve completed/waiting labels already rendered.
-                    pass
-            if status == "WORKING":
-                current_placeholder.info(f"🔵 CURRENT AGENT: **{agent_name}** — {detail}")
-            elif status == "Completed":
-                current_placeholder.success(f"✅ **{agent_name}** completed — {detail}")
-            completed = {
-                "SOC Orchestrator Agent": 1,
-                "Security Analysis Agent": 2,
-                "Threat Intelligence Agent": 3,
-                "Risk & Business Agent": 4,
-                "Response & Automation Agent": 5,
-            }.get(agent_name, 0) if status == "Completed" else 0
-            if completed:
-                progress.progress(completed / 5, text=f"Workflow progress: {completed}/5 agents completed")
-
-        if st.button("🚀 Start AI Investigation", type="primary", use_container_width=True):
-            st.session_state.workflow_result = None
-            try:
-                with st.spinner("NEXUS agents are investigating..."):
-                    result = run_workflow(df, incident_id, update_status)
-                st.session_state.workflow_result = result
-                progress.progress(1.0, text="Workflow complete — human approval required for any response action")
+        if snapshot:
+            completed = snapshot["completed_steps"]
+            progress.progress(min(completed / 5, 1.0), text=f"Workflow progress: {completed}/5 agents completed")
+            if snapshot["status"] == "running":
+                current = snapshot["current_agent"] or "Preparing workflow"
+                current_placeholder.info(f"🔵 CURRENT AGENT: **{current}** — {snapshot['detail']}")
+                # Poll the background job once per second. This keeps all
+                # Streamlit UI calls on the ScriptRunner thread.
+                time.sleep(1)
+                st.rerun()
+            elif snapshot["status"] == "failed":
+                current_placeholder.error(f"❌ Workflow failed: {snapshot['error']}")
+            elif snapshot["status"] == "completed":
                 current_placeholder.success("🏁 Investigation complete. No production action was executed.")
-            except Exception as exc:
-                current_placeholder.error(f"Workflow failed: {exc}")
-                st.exception(exc)
+                st.session_state.workflow_result = snapshot["result"]
 
         result = st.session_state.workflow_result
         if result:
