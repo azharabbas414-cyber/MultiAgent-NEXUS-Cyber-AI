@@ -95,6 +95,45 @@ def severity_counts(df: pd.DataFrame) -> pd.DataFrame:
     return counts.rename_axis("Severity").reset_index(name="Events")
 
 
+def incident_summary_table(df: pd.DataFrame) -> pd.DataFrame:
+    """Build an incident summary without assuming optional columns exist."""
+    if "incident_id" not in df.columns:
+        return pd.DataFrame()
+
+    work = df.copy()
+    work["incident_id"] = work["incident_id"].astype(str)
+    grouped = work.groupby("incident_id", dropna=False)
+    summary = grouped.size().rename("Events").reset_index()
+
+    if "severity" in work.columns:
+        severity_rank = {"critical": 5, "high": 4, "medium": 3, "low": 2, "info": 1}
+
+        def highest_severity(values):
+            vals = [str(v).strip().lower() for v in values if str(v).strip()]
+            if not vals:
+                return "unknown"
+            return max(vals, key=lambda v: severity_rank.get(v, 0))
+
+        sev = grouped["severity"].agg(highest_severity).rename("Highest_Severity").reset_index()
+        summary = summary.merge(sev, on="incident_id", how="left")
+
+    for source_col, output_col in [
+        ("asset", "Assets"),
+        ("user", "Users"),
+        ("business_service", "Services"),
+    ]:
+        if source_col in work.columns:
+            values = (
+                grouped[source_col]
+                .agg(lambda s: ", ".join(pd.unique(s.dropna().astype(str))[:3]))
+                .rename(output_col)
+                .reset_index()
+            )
+            summary = summary.merge(values, on="incident_id", how="left")
+
+    return summary.sort_values("Events", ascending=False)
+
+
 def agent_monitor(job_id: str | None):
     snapshot = get_snapshot(job_id) if job_id else None
     st.markdown('<div class="section-title">🤖 AI Agent Command Center</div>', unsafe_allow_html=True)
@@ -308,12 +347,11 @@ if page == "SOC Dashboard":
         with right:
             st.markdown('<div class="section-title">🧾 Incident Overview</div>', unsafe_allow_html=True)
             if "incident_id" in df.columns:
-                inc = df.groupby("incident_id").agg(
-                    Events=("event_id", "count"),
-                    Highest_Severity=("severity", lambda s: ", ".join(pd.unique(s.astype(str))[:3])),
-                    Assets=("asset", lambda s: ", ".join(pd.unique(s.astype(str))[:3])),
-                ).reset_index().sort_values("Events", ascending=False)
-                st.dataframe(inc.head(10), use_container_width=True, hide_index=True)
+                inc = incident_summary_table(df)
+                if not inc.empty:
+                    st.dataframe(inc.head(10), use_container_width=True, hide_index=True)
+                else:
+                    st.info("No incident summary fields are available in this dataset.")
 
         st.divider()
         agent_monitor(st.session_state.workflow_job_id)
@@ -438,44 +476,12 @@ elif page == "Data Inspector":
             st.info("No column renaming was required.")
         st.subheader("Incident Summary")
         if "incident_id" in df.columns:
-            # PCAP datasets intentionally do not contain the normal incident
-            # fields such as severity/asset/user/business_service. Build the
-            # summary dynamically so inspection never fails with a pandas
-            # KeyError when a valid PCAP is loaded.
-            work = df.copy()
-            if "event_id" in work.columns:
-                events_series = work.groupby("incident_id")["event_id"].count().rename("Events")
-            else:
-                events_series = work.groupby("incident_id").size().rename("Events")
-
-            incident_summary = events_series.reset_index()
-
-            if "severity" in work.columns:
-                def _highest_severity(series):
-                    values = series.dropna().astype(str).str.lower().tolist()
-                    for level in ("critical", "high", "medium", "low", "info"):
-                        if level in values:
-                            return level
-                    return values[0] if values else "unknown"
-                severity_df = work.groupby("incident_id")["severity"].agg(_highest_severity).reset_index(name="Highest_Severity")
-                incident_summary = incident_summary.merge(severity_df, on="incident_id", how="left")
-
-            for source_col, output_col in [
-                ("asset", "Assets"),
-                ("user", "Users"),
-                ("business_service", "Services"),
-            ]:
-                if source_col in work.columns:
-                    values_df = work.groupby("incident_id")[source_col].agg(
-                        lambda s: ", ".join(pd.unique(s.dropna().astype(str))[:3])
-                    ).reset_index(name=output_col)
-                    incident_summary = incident_summary.merge(values_df, on="incident_id", how="left")
-
-            st.dataframe(incident_summary.sort_values("Events", ascending=False), use_container_width=True, hide_index=True)
-            if "protocol" in df.columns and "PCAP-DATASET" in set(df["incident_id"].astype(str)):
-                st.caption("PCAP dataset detected. Packet-level network intelligence is available for SOC Investigation; incident fields such as severity, user and business service are not inferred from packets.")
-            else:
+            incident_summary = incident_summary_table(df)
+            if not incident_summary.empty:
+                st.dataframe(incident_summary, use_container_width=True, hide_index=True)
                 st.caption("Use SOC Investigation to select an incident and run the five-agent AI investigation. This section is for inspection only.")
+            else:
+                st.info("No incident summary fields are available in this dataset.")
         else:
             st.info("No incident_id field is available in this dataset.")
         st.divider()
