@@ -1,9 +1,8 @@
 """
 NEXUS Cyber AI — Workflow definitions.
 
-Milestone 1 placeholder.
-CrewAI Flow and multi-agent workflows will be implemented later.
+Milestone 2: CrewAI workflow is intentionally not activated yet.
 """
 
 def run_workflow():
-    raise NotImplementedError("CrewAI workflow will be added in a later milestone.")
+    raise NotImplementedError("CrewAI workflow will be added after the data layer is validated.")

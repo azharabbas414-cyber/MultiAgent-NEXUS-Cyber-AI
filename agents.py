@@ -1,8 +1,7 @@
 """
 NEXUS Cyber AI — Agent definitions.
 
-Milestone 1 placeholder.
-The five CrewAI agents will be implemented in a later milestone.
+Milestone 2: placeholders remain. Agents are intentionally not activated yet.
 """
 
 AGENT_NAMES = [
