@@ -71,7 +71,7 @@ def build_llm(config: dict[str, str] | None = None) -> LLM:
         base_url=base_url,
         api_key=api_key,
         temperature=0.1,
-        max_tokens=2500,
+        max_tokens=1200,
     )
 
 
@@ -82,6 +82,14 @@ def _text(value: Any) -> str:
     if hasattr(value, "raw"):
         return str(value.raw)
     return str(value)
+
+
+def _clip(value: Any, max_chars: int = 2400) -> str:
+    """Bound text passed between agents so Groq TPM limits are not exceeded."""
+    text = _text(value)
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars] + "\n[Context truncated for token-budget safety.]"
 
 
 def _run_single_agent(agent: Any, description: str, expected_output: str, llm: LLM) -> str:
@@ -112,7 +120,7 @@ def _knowledge_context() -> str:
         path = base / filename
         if path.exists():
             parts.append(f"\n### {filename}\n{path.read_text(encoding='utf-8')}\n")
-    return "\n".join(parts)
+    return _clip("\n".join(parts), 3000)
 
 
 def _dataset_context(df: Any, incident_id: str) -> str:
@@ -129,7 +137,7 @@ def _dataset_context(df: Any, incident_id: str) -> str:
     # Keep prompts bounded while preserving all columns needed for analysis.
     work = work.head(100)
     records = work.where(work.notna(), None).to_dict(orient="records")
-    return json.dumps(records, indent=2, default=str)
+    return _clip(json.dumps(records, indent=2, default=str), 3000)
 
 
 class NexusSOCFlow(Flow[NexusWorkflowState]):
@@ -176,10 +184,10 @@ You are the SOC Orchestrator for NEXUS Cyber AI.
 
 Incident ID: {self.state.incident_id}
 Security evidence:
-{self.state.incident_context}
+{_clip(self.state.incident_context, 2200)}
 
 Local NEXUS knowledge:
-{self.state.knowledge_context}
+{_clip(self.state.knowledge_context, 2200)}
 
 Create a concise investigation plan for the next four specialist stages.
 Identify the key questions, evidence that must be checked, and expected handoffs.
@@ -204,10 +212,10 @@ Analyze the selected cybersecurity incident using ONLY the supplied evidence.
 
 Incident ID: {self.state.incident_id}
 Evidence:
-{self.state.incident_context}
+{_clip(self.state.incident_context, 2200)}
 
 Orchestrator plan:
-{orchestrator_result}
+{_clip(orchestrator_result, 2200)}
 
 Produce:
 1. Observed facts
@@ -237,13 +245,13 @@ Investigate the indicators found in this incident using the supplied local knowl
 
 Incident ID: {self.state.incident_id}
 Evidence:
-{self.state.incident_context}
+{_clip(self.state.incident_context, 2200)}
 
 Security Analysis:
-{security_result}
+{_clip(security_result, 2200)}
 
 Local threat intelligence knowledge:
-{self.state.knowledge_context}
+{_clip(self.state.knowledge_context, 2200)}
 
 For each relevant indicator, state whether it is:
 - supported by local knowledge,
@@ -272,16 +280,16 @@ Assess the technical findings from a business-risk perspective.
 
 Incident ID: {self.state.incident_id}
 Evidence:
-{self.state.incident_context}
+{_clip(self.state.incident_context, 2200)}
 
 Security Analysis:
-{self.state.security_result}
+{_clip(self.state.security_result, 2200)}
 
 Threat Intelligence:
-{threat_result}
+{_clip(threat_result, 2200)}
 
 Relevant business-risk knowledge:
-{self.state.knowledge_context}
+{_clip(self.state.knowledge_context, 2200)}
 
 Produce:
 1. Affected assets/services
@@ -311,19 +319,19 @@ Prepare safe SOC response artifacts. HUMAN APPROVAL IS REQUIRED.
 
 Incident ID: {self.state.incident_id}
 Evidence:
-{self.state.incident_context}
+{_clip(self.state.incident_context, 2200)}
 
 Security Analysis:
-{self.state.security_result}
+{_clip(self.state.security_result, 2200)}
 
 Threat Intelligence:
-{self.state.threat_result}
+{_clip(self.state.threat_result, 2200)}
 
 Risk & Business:
 {risk_result}
 
 Local incident-response knowledge:
-{self.state.knowledge_context}
+{_clip(self.state.knowledge_context, 2200)}
 
 Produce:
 1. Recommended investigation follow-ups
