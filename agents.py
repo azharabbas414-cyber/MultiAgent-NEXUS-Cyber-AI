@@ -49,7 +49,7 @@ def build_agents(llm: Any = None) -> dict[str, Agent]:
             "You organize evidence, handoffs, approvals, and final outputs."
         ),
         verbose=True,
-        allow_delegation=True,
+        allow_delegation=False,
         **common,
     )
 

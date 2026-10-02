@@ -1,76 +1,46 @@
 # NEXUS Cyber AI
 
-**NEXUS = Network EXpert Unified Security**
+Network EXpert Unified Security — a human-controlled, read-only multi-agent SOC analysis platform.
 
-## Milestone 4 — Multi-Agent SOC Workflow
+## AI providers
 
-Milestone 4 connects the five CrewAI agents into a structured, sequential investigation flow:
+NEXUS supports interchangeable AI backends without changing the five SOC agents:
 
-1. SOC Orchestrator
-2. Security Analysis
-3. Threat Intelligence
-4. Risk & Business
-5. Response & Automation
+- **Groq** — cloud API; existing provider.
+- **Gemini** — Google Gemini API through its OpenAI-compatible endpoint. Google documents this compatibility layer officially. The default NEXUS model is `gemini-3.1-flash-lite`; free-tier availability and quotas are subject to Google's current limits.
+- **Ollama** — local OpenAI-compatible API. No cloud API key is required; the model runs on your own machine/server.
 
-The Streamlit UI shows the current agent, status, progress and handoffs while the workflow runs.
+The Streamlit **SOC Investigation** page has an **AI Provider** selector. You can also set `AI_PROVIDER` in Streamlit Secrets.
 
-## Model configuration
-
-The workflow uses an OpenAI-compatible endpoint and defaults to Groq's `openai/gpt-oss-120b` model. CrewAI's current documentation supports custom OpenAI-compatible endpoints through `custom_openai=True` and `base_url`.
-
-Streamlit Secrets:
+### Gemini Streamlit Secrets
 
 ```toml
-GROK_API_KEY = "your_groq_api_key"
+AI_PROVIDER = "gemini"
+GEMINI_API_KEY = "your_gemini_api_key"
+GEMINI_MODEL = "gemini-3.1-flash-lite"
+GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 ```
 
-Optional:
+### Groq Streamlit Secrets
 
 ```toml
+AI_PROVIDER = "groq"
+GROK_API_KEY = "your_groq_api_key"
 GROK_MODEL = "openai/gpt-oss-120b"
-
-Note: the workflow internally compensates for CrewAI custom_openai prefix handling so Groq receives the exact model ID `openai/gpt-oss-120b`.
 GROK_BASE_URL = "https://api.groq.com/openai/v1"
 ```
 
-## Safety boundary
+### Ollama local configuration
 
-NEXUS is read-only and human-controlled. Agents do not directly:
-- SSH to production devices
-- change firewall/router configuration
-- modify production endpoints
-- delete accounts
-- automatically block indicators
-- execute irreversible response actions
-
-The Response & Automation Agent only prepares response artifacts for human review.
-
-## Run
-
-```bash
-python3 -m pip install -r requirements.txt
-python3 -m streamlit run app.py
+```toml
+AI_PROVIDER = "ollama"
+OLLAMA_MODEL = "llama3.2:3b"
+OLLAMA_BASE_URL = "http://localhost:11434/v1"
+OLLAMA_API_KEY = "ollama"
 ```
 
+Ollama must be running where NEXUS is running. It is generally not usable from Streamlit Community Cloud when Ollama is only running on your local PC because the cloud app cannot reach `localhost` on your computer.
 
-### Streamlit/CrewAI execution note
-The Streamlit SOC Investigation page runs the CrewAI Flow in a background worker and polls a thread-safe job registry stored in a separate imported module. This is important because Streamlit reruns `app.py`, which would otherwise recreate module-level job state. Streamlit secrets are read on the UI thread and passed into the worker; the worker never calls Streamlit APIs.
+## Safety boundary
 
-
-Milestone 4 v4: bounded inter-agent context and reduced output token budget to stay within Groq TPM limits.
-
-
-## Milestone 5 — SOC Dashboard
-
-Milestone 5 adds the operational Streamlit SOC experience on top of the verified Milestone 4 workflow:
-
-- SOC Dashboard with security-event, incident, severity and asset KPIs
-- Severity and event-type visualizations
-- Data Inspector incident summary with evidence-oriented dataset inspection
-- AI SOC Command Center replacing the old static agent-definition page
-- Live agent status and latest investigation outputs
-- Existing Data Sources, Data Inspector and SOC Investigation preserved
-- Separate Incidents page removed to avoid duplicating SOC Investigation
-- Human approval remains required for consequential response actions
-
-No production network/device/endpoint changes are executed by NEXUS.
+NEXUS only analyzes supplied/synthetic data and prepares recommendations/reports. It does not SSH to production devices, change firewalls/routers/endpoints, delete accounts, block traffic, or execute consequential response actions.

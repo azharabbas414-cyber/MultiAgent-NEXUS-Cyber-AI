@@ -23,6 +23,7 @@ from crewai.flow.flow import Flow, listen, start
 from pydantic import BaseModel, Field
 
 from agents import build_agents
+from ai_provider import build_llm
 
 
 StatusCallback = Callable[[str, str, str], None]
@@ -41,38 +42,6 @@ class NexusWorkflowState(BaseModel):
     statuses: dict[str, str] = Field(default_factory=dict)
     completed_steps: int = 0
     total_steps: int = 5
-
-
-def build_llm(config: dict[str, str] | None = None) -> LLM:
-    """Build an OpenAI-compatible LLM. Secrets are supplied by the UI thread."""
-    config = config or {}
-    api_key = config.get("api_key") or os.getenv("GROK_API_KEY") or os.getenv("GROQ_API_KEY")
-    if not api_key:
-        raise ValueError(
-            "GROK_API_KEY is not configured. Add it to Streamlit Secrets "
-            "before running the AI workflow."
-        )
-    model = config.get("model") or os.getenv("GROK_MODEL", "openai/gpt-oss-120b")
-    base_url = config.get("base_url") or os.getenv("GROK_BASE_URL", "https://api.groq.com/openai/v1")
-
-    # CrewAI's custom_openai mode strips one leading ``openai/`` prefix
-    # before sending the request. Groq's GPT-OSS model ID itself requires
-    # that prefix, so preserve it on the wire by adding one extra prefix.
-    # This turns ``openai/gpt-oss-120b`` into ``openai/openai/gpt-oss-120b``
-    # for CrewAI, which then sends the required ``openai/gpt-oss-120b``.
-    if "api.groq.com/openai/v1" in base_url and model == "openai/gpt-oss-120b":
-        model = "openai/openai/gpt-oss-120b"
-    elif "api.groq.com/openai/v1" in base_url and model == "gpt-oss-120b":
-        model = "openai/openai/gpt-oss-120b"
-
-    return LLM(
-        model=model,
-        custom_openai=True,
-        base_url=base_url,
-        api_key=api_key,
-        temperature=0.1,
-        max_tokens=1200,
-    )
 
 
 def _text(value: Any) -> str:

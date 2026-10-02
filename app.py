@@ -605,11 +605,36 @@ else:
         job_id = st.session_state.workflow_job_id
         snapshot = get_snapshot(job_id) if job_id else None
 
-        llm_config = {
-            "api_key": str(st.secrets.get("GROK_API_KEY", "")) or str(st.secrets.get("GROQ_API_KEY", "")),
-            "model": str(st.secrets.get("GROK_MODEL", "openai/gpt-oss-120b")),
-            "base_url": str(st.secrets.get("GROK_BASE_URL", "https://api.groq.com/openai/v1")),
-        }
+        # Select the AI backend without changing the five SOC agents.
+        configured_provider = str(st.secrets.get("AI_PROVIDER", "groq")).lower()
+        provider = st.selectbox(
+            "AI Provider",
+            ["groq", "gemini", "ollama"],
+            index=["groq", "gemini", "ollama"].index(configured_provider) if configured_provider in ["groq", "gemini", "ollama"] else 0,
+            help="Choose the LLM backend. Gemini has a free API tier; Ollama runs locally; Groq uses its configured API quota.",
+        )
+
+        if provider == "gemini":
+            llm_config = {
+                "provider": "gemini",
+                "api_key": str(st.secrets.get("GEMINI_API_KEY", "")),
+                "model": str(st.secrets.get("GEMINI_MODEL", "gemini-3.1-flash-lite")),
+                "base_url": str(st.secrets.get("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/")),
+            }
+        elif provider == "ollama":
+            llm_config = {
+                "provider": "ollama",
+                "api_key": str(st.secrets.get("OLLAMA_API_KEY", "ollama")),
+                "model": str(st.secrets.get("OLLAMA_MODEL", "llama3.2:3b")),
+                "base_url": str(st.secrets.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")),
+            }
+        else:
+            llm_config = {
+                "provider": "groq",
+                "api_key": str(st.secrets.get("GROK_API_KEY", "")) or str(st.secrets.get("GROQ_API_KEY", "")),
+                "model": str(st.secrets.get("GROK_MODEL", "openai/gpt-oss-120b")),
+                "base_url": str(st.secrets.get("GROK_BASE_URL", "https://api.groq.com/openai/v1")),
+            }
 
         if st.button("🚀 Start AI Investigation", type="primary", use_container_width=True, disabled=bool(snapshot and snapshot["status"] == "running")):
             st.session_state.workflow_result = None

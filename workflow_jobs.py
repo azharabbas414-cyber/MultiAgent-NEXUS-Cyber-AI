@@ -11,6 +11,7 @@ import uuid
 from typing import Any
 
 from workflow import run_workflow
+from ai_provider import provider_settings
 from agents import AGENT_NAMES
 
 _JOBS: dict[str, dict[str, Any]] = {}
@@ -48,10 +49,12 @@ def create_job(df: Any, incident_id: str, llm_config: dict[str, str]) -> str:
 
     def worker() -> None:
         try:
-            if not llm_config.get("api_key"):
+            settings = provider_settings(llm_config)
+            if settings["provider"] != "ollama" and not settings.get("api_key"):
+                key_name = "GEMINI_API_KEY" if settings["provider"] == "gemini" else "GROK_API_KEY"
                 raise ValueError(
-                    "GROK_API_KEY is not configured in Streamlit Secrets. "
-                    "Add GROK_API_KEY before starting the AI investigation."
+                    f"{key_name} is not configured in Streamlit Secrets. "
+                    "Add the selected AI provider key before starting the investigation."
                 )
             result = run_workflow(df, incident_id, update_status, llm_config=llm_config)
             with _LOCK:
