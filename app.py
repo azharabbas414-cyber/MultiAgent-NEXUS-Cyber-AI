@@ -324,7 +324,7 @@ elif page == "AI SOC Command Center":
     st.divider()
     st.markdown('<div class="section-title">Agent Roles</div>', unsafe_allow_html=True)
     descriptions = {
-        "SOC Orchestrator Agent": "Coordinates the investigation, delegates stages and tracks handoffs.",
+        "Investigation Coordinator Agent": "Coordinates the investigation, delegates stages and tracks handoffs.",
         "Security Analysis Agent": "Correlates events, reconstructs timelines and identifies suspicious activity.",
         "Threat Intelligence Agent": "Investigates indicators using the available NEXUS knowledge base.",
         "Risk & Business Agent": "Maps findings to asset, service and business impact.",
@@ -339,7 +339,7 @@ elif page == "AI SOC Command Center":
         st.divider()
         st.markdown('<div class="section-title">Latest Investigation Outputs</div>', unsafe_allow_html=True)
         result = snapshot["result"]
-        tabs = st.tabs(["Orchestrator", "Security", "Threat Intel", "Risk & Business", "Response"])
+        tabs = st.tabs(["Investigation Coordinator", "Security", "Threat Intel", "Risk & Business", "Response"])
         outputs = [result["orchestrator"], result["security_analysis"], result["threat_intelligence"], result["risk_business"], result["response_automation"]]
         for tab, output in zip(tabs, outputs):
             with tab:
@@ -385,10 +385,19 @@ else:
             st.rerun()
 
         snapshot = get_snapshot(st.session_state.workflow_job_id) if st.session_state.workflow_job_id else None
+        agent_descriptions = {
+            "Investigation Coordinator Agent": "Coordinates the investigation and decides what each agent should do.",
+            "Security Analysis Agent": "Analyzes the security events to understand what happened.",
+            "Threat Intelligence Agent": "Checks IPs, indicators, and threats to understand whether they are malicious.",
+            "Risk & Business Agent": "Determines the risk to systems and business services.",
+            "Response & Automation Agent": "Prepares recommended response actions for human approval.",
+        }
+
         for name in AGENT_NAMES:
             row = st.container()
             c1, c2 = row.columns([3, 2])
             c1.markdown(f"**{name}**")
+            c1.caption(agent_descriptions.get(name, "Specialized security investigation agent."))
             status = snapshot["statuses"].get(name, "Waiting") if snapshot else "Waiting"
             icon = "▶️" if status == "WORKING" else ("✅" if status == "Completed" else "⏳")
             c2.markdown(f"{icon} **{status}**")
@@ -413,7 +422,7 @@ else:
         if result:
             st.divider()
             st.subheader("📋 Investigation Results")
-            tabs = st.tabs(["Orchestrator", "Security Analysis", "Threat Intelligence", "Risk & Business", "Response Plan"])
+            tabs = st.tabs(["Investigation Coordinator", "Security Analysis", "Threat Intelligence", "Risk & Business", "Response Plan"])
             outputs = [result["orchestrator"], result["security_analysis"], result["threat_intelligence"], result["risk_business"], result["response_automation"]]
             for tab, output in zip(tabs, outputs):
                 with tab:
