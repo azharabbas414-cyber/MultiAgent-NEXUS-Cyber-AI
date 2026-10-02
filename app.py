@@ -134,6 +134,55 @@ def incident_summary_table(df: pd.DataFrame) -> pd.DataFrame:
     return summary.sort_values("Events", ascending=False)
 
 
+
+def render_pcap_summary(df: pd.DataFrame) -> None:
+    """Render PCAP-specific network intelligence for offline captures."""
+    if df.attrs.get("nexus_dataset_type") != "pcap":
+        return
+    summary = df.attrs.get("pcap_summary", {})
+    st.markdown("### 🕵️ PCAP Network Intelligence")
+    metrics = st.columns(6)
+    metrics[0].metric("Packets", f"{summary.get('packets', len(df)):,}")
+    metrics[1].metric("TCP", f"{summary.get('protocol_counts', {}).get('TCP', 0):,}")
+    metrics[2].metric("UDP", f"{summary.get('protocol_counts', {}).get('UDP', 0):,}")
+    metrics[3].metric("ARP", f"{summary.get('protocol_counts', {}).get('ARP', 0):,}")
+    metrics[4].metric("Unique Flows", f"{summary.get('unique_flows', 0):,}")
+    metrics[5].metric("Source IPs", f"{summary.get('unique_source_ips', 0):,}")
+
+    left, right = st.columns(2)
+    with left:
+        proto = pd.DataFrame(list(summary.get("protocol_counts", {}).items()), columns=["Protocol", "Packets"])
+        if not proto.empty:
+            fig = px.pie(proto, names="Protocol", values="Packets", hole=0.55)
+            fig.update_layout(height=300, margin=dict(l=10,r=10,t=25,b=10), paper_bgcolor="#eef5fb", plot_bgcolor="#eef5fb")
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    with right:
+        flags = pd.DataFrame(list(summary.get("tcp_flags", {}).items()), columns=["TCP Flag", "Packets"])
+        if not flags.empty:
+            fig = px.bar(flags.sort_values("Packets"), x="Packets", y="TCP Flag", orientation="h")
+            fig.update_layout(height=300, margin=dict(l=10,r=10,t=25,b=10), paper_bgcolor="#eef5fb", plot_bgcolor="#eef5fb")
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+    left, right = st.columns(2)
+    with left:
+        src = pd.DataFrame(list(summary.get("top_source_ips", {}).items()), columns=["Source IP", "Packets"])
+        if not src.empty:
+            fig = px.bar(src.head(8).sort_values("Packets"), x="Packets", y="Source IP", orientation="h")
+            fig.update_layout(height=300, margin=dict(l=10,r=10,t=25,b=10), paper_bgcolor="#eef5fb", plot_bgcolor="#eef5fb")
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    with right:
+        services = pd.DataFrame(list(summary.get("services", {}).items()), columns=["Service", "Packets"])
+        if not services.empty:
+            fig = px.bar(services.head(8).sort_values("Packets"), x="Packets", y="Service", orientation="h")
+            fig.update_layout(height=300, margin=dict(l=10,r=10,t=25,b=10), paper_bgcolor="#eef5fb", plot_bgcolor="#eef5fb")
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+    flows = pd.DataFrame(list(summary.get("top_flows", {}).items()), columns=["Conversation", "Packets"])
+    if not flows.empty:
+        st.markdown("#### 🔗 Top Network Conversations")
+        st.dataframe(flows, use_container_width=True, hide_index=True)
+
+
 def agent_monitor(job_id: str | None):
     snapshot = get_snapshot(job_id) if job_id else None
     st.markdown('<div class="section-title">🤖 AI Agent Command Center</div>', unsafe_allow_html=True)
@@ -174,6 +223,8 @@ if page == "SOC Dashboard":
             <p>Security operations overview · {source_label} · {len(df):,} events</p></div>""",
             unsafe_allow_html=True,
         )
+
+        render_pcap_summary(df)
 
         incidents = int(df["incident_id"].nunique()) if "incident_id" in df.columns else 0
         critical = int((df["severity"].astype(str).str.lower() == "critical").sum()) if "severity" in df.columns else 0
@@ -438,6 +489,8 @@ elif page == "Data Inspector":
         df = st.session_state.dataset
         report = st.session_state.inspection
         st.markdown(f"**File:** `{st.session_state.dataset_name}`  \n**Source:** `{st.session_state.source_type}`")
+        if df.attrs.get("nexus_dataset_type") == "pcap":
+            render_pcap_summary(df)
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Rows", report["rows"])
         c2.metric("Columns", report["columns"])

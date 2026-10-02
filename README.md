@@ -74,7 +74,3 @@ Milestone 5 adds the operational Streamlit SOC experience on top of the verified
 - Human approval remains required for consequential response actions
 
 No production network/device/endpoint changes are executed by NEXUS.
-
-
-### PCAP investigation
-NEXUS can ingest PCAP/PCAPNG packet data. During AI investigation, packet rows are reduced to deterministic network-intelligence summaries and representative evidence before being passed to the five agents. This avoids sending thousands of raw packet rows into every agent prompt.

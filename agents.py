@@ -17,7 +17,7 @@ from crewai import Agent
 
 
 AGENT_NAMES = [
-    "Investigation Coordinator Agent",
+    "SOC Orchestrator Agent",
     "Security Analysis Agent",
     "Threat Intelligence Agent",
     "Risk & Business Agent",
@@ -36,7 +36,7 @@ def build_agents(llm: Any = None) -> dict[str, Agent]:
     common = {"llm": llm} if llm is not None else {}
 
     orchestrator = Agent(
-        role="Investigation Coordinator",
+        role="SOC Orchestrator",
         goal=(
             "Coordinate cybersecurity investigations, understand the user's "
             "request, delegate work to the correct specialist agents, track "

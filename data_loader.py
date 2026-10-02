@@ -23,8 +23,8 @@ from typing import Any
 import pandas as pd
 import requests
 
-
 from config import SECURITY_FIELDS, SUPPORTED_EXTENSIONS
+from pcap_analyzer import analyze_pcap
 
 
 COLUMN_ALIASES = {
@@ -72,62 +72,10 @@ def detect_format(filename: str | None = None, content_type: str | None = None) 
         return "JSON"
     if "csv" in ctype or "text/plain" in ctype:
         return "CSV"
+    if "pcap" in ctype or "pcapng" in ctype:
+        return "PCAP"
 
     return "Unknown"
-
-
-def _read_pcap_bytes(data: bytes) -> pd.DataFrame:
-    """Convert a PCAP/PCAPNG byte payload into packet-level security events."""
-    from scapy.all import IP, IPv6, TCP, UDP, ICMP, rdpcap
-    import tempfile
-
-    with tempfile.NamedTemporaryFile(suffix=".pcap", delete=True) as tmp:
-        tmp.write(data)
-        tmp.flush()
-        packets = rdpcap(tmp.name)
-
-    rows = []
-    for idx, packet in enumerate(packets, start=1):
-        src = dst = protocol = src_port = dst_port = tcp_flags = ""
-        if packet.haslayer(IP):
-            ip = packet[IP]
-            src, dst = ip.src, ip.dst
-            protocol = {6: "TCP", 17: "UDP", 1: "ICMP"}.get(ip.proto, str(ip.proto))
-        elif packet.haslayer(IPv6):
-            ip = packet[IPv6]
-            src, dst = ip.src, ip.dst
-            protocol = {6: "TCP", 17: "UDP", 58: "ICMPv6"}.get(ip.nh, str(ip.nh))
-
-        if packet.haslayer(TCP):
-            src_port, dst_port = int(packet[TCP].sport), int(packet[TCP].dport)
-            tcp_flags = str(packet[TCP].flags)
-        elif packet.haslayer(UDP):
-            src_port, dst_port = int(packet[UDP].sport), int(packet[UDP].dport)
-
-        event_type = "Network Packet"
-        if protocol == "TCP" and tcp_flags:
-            event_type = f"TCP {tcp_flags}"
-        elif protocol:
-            event_type = f"{protocol} Traffic"
-
-        rows.append({
-            "timestamp": str(getattr(packet, "time", "")),
-            "event_id": f"PCAP-{idx:06d}",
-            "event_type": event_type,
-            "source_ip": src,
-            "destination_ip": dst,
-            "protocol": protocol,
-            "source_port": src_port,
-            "destination_port": dst_port,
-            "packet_length": len(packet),
-            "tcp_flags": tcp_flags,
-            "action": "Observed",
-            "indicator": src or dst,
-            "threat_type": "",
-            "incident_id": "PCAP-DATASET",
-        })
-
-    return pd.DataFrame(rows)
 
 
 def _read_bytes(data: bytes, filename: str, file_format: str = "Unknown") -> pd.DataFrame:
@@ -138,8 +86,7 @@ def _read_bytes(data: bytes, filename: str, file_format: str = "Unknown") -> pd.
     if fmt == "Excel":
         return pd.read_excel(io.BytesIO(data))
     if fmt == "PCAP":
-        return _read_pcap_bytes(data)
-
+        raise ValueError("PCAP parsing requires the uploaded filename; use load_uploaded_file().")
     if fmt == "JSON":
         try:
             return pd.read_json(io.BytesIO(data))
@@ -164,12 +111,16 @@ def _read_bytes(data: bytes, filename: str, file_format: str = "Unknown") -> pd.
         except Exception:
             continue
 
-    raise ValueError("Could not determine the file format. Use CSV, Excel, JSON, or PCAP/PCAPNG.")
+    raise ValueError("Could not determine the file format. Use CSV, Excel, or JSON.")
 
 
 def load_uploaded_file(uploaded_file) -> pd.DataFrame:
-    """Load a Streamlit UploadedFile."""
+    """Load a Streamlit UploadedFile, including offline PCAP/PCAPNG."""
     data = uploaded_file.getvalue()
+    if detect_format(uploaded_file.name) == "PCAP":
+        df, summary = analyze_pcap(data, uploaded_file.name)
+        df.attrs["pcap_summary"] = summary
+        return df
     return _read_bytes(data, uploaded_file.name)
 
 
@@ -255,6 +206,7 @@ def standardize_columns(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, str]]
                 break
 
     standardized = df.rename(columns=rename_map).copy()
+    standardized.attrs.update(getattr(df, "attrs", {}))
     return standardized, {str(k): str(v) for k, v in rename_map.items()}
 
 
