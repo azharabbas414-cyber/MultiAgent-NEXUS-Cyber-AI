@@ -165,24 +165,44 @@ if page == "SOC Dashboard":
                 return
 
             options = ["Bar", "Line", "Pie", "Donut"]
-            chart_type = st.selectbox("Chart type", options, index=options.index(default_type), key=f"chart_type_{key}")
+            state_key = f"chart_type_{key}"
+            if state_key not in st.session_state:
+                st.session_state[state_key] = default_type
 
+            # Compact chart-type control beside the graph title instead of taking
+            # a full row. The gear button opens a small popover for Bar/Line/Pie/Donut.
+            title_col, control_col = st.columns([0.94, 0.06], vertical_alignment="center")
+            with title_col:
+                st.markdown(f"**{title}**")
+            with control_col:
+                with st.popover("⚙", help="Change chart type"):
+                    st.caption("Chart type")
+                    st.radio(
+                        "",
+                        options,
+                        index=options.index(st.session_state[state_key]),
+                        key=f"chart_type_picker_{key}",
+                        label_visibility="collapsed",
+                    )
+                    st.session_state[state_key] = st.session_state[f"chart_type_picker_{key}"]
+
+            chart_type = st.session_state[state_key]
             plot_data = data.copy()
             if chart_type in ("Pie", "Donut"):
                 fig = px.pie(
                     plot_data,
                     names=category_col,
                     values=value_col,
-                    title=title,
+                    title=None,
                     hole=0.55 if chart_type == "Donut" else 0,
                 )
                 fig.update_traces(textposition="inside", textinfo="percent+label")
             elif chart_type == "Line":
                 if horizontal:
                     # Line charts are most readable with the category on X.
-                    fig = px.line(plot_data.sort_values(category_col), x=category_col, y=value_col, title=title, markers=True)
+                    fig = px.line(plot_data.sort_values(category_col), x=category_col, y=value_col, title=None, markers=True)
                 else:
-                    fig = px.line(plot_data, x=category_col, y=value_col, title=title, markers=True)
+                    fig = px.line(plot_data, x=category_col, y=value_col, title=None, markers=True)
                 fig.update_layout(hovermode="x unified")
             else:
                 if horizontal:
@@ -191,11 +211,11 @@ if page == "SOC Dashboard":
                         x=value_col,
                         y=category_col,
                         orientation="h",
-                        title=title,
+                        title=None,
                         text=value_col,
                     )
                 else:
-                    fig = px.bar(plot_data, x=category_col, y=value_col, title=title, text=value_col)
+                    fig = px.bar(plot_data, x=category_col, y=value_col, title=None, text=value_col)
                 fig.update_traces(textposition="outside")
 
             fig.update_layout(height=330, margin=dict(l=10, r=10, t=55, b=10), showlegend=(chart_type in ("Pie", "Donut")))
@@ -222,7 +242,6 @@ if page == "SOC Dashboard":
                 timeline = timeline[timeline["Events"] > 0]
                 if not timeline.empty:
                     timeline["Time Period"] = timeline["timestamp"].dt.strftime("%d %b %H:%M") if freq != "1D" else timeline["timestamp"].dt.strftime("%d %b %Y")
-                    st.markdown("**Security Event Activity Over Time**")
                     st.caption(f"Automatically using {granularity} intervals based on the dataset time range.")
                     render_chart(timeline, "Time Period", "Events", "Security Event Activity Over Time", "timeline", default_type="Line", timeline=True)
         if timeline.empty:
