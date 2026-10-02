@@ -18,8 +18,8 @@ st.set_page_config(page_title=APP_NAME, page_icon="🛡️", layout="wide", init
 st.markdown(
     """
     <style>
-    .block-container {padding-top: 2.0rem; padding-bottom: 2rem;}
-    .nexus-title {font-size: 2.1rem; font-weight: 750; line-height: 1.25; margin-top: 0.25rem; margin-bottom: 0.1rem; overflow: visible;}
+    .block-container {padding-top: 1.2rem; padding-bottom: 2rem;}
+    .nexus-title {font-size: 2.1rem; font-weight: 750; margin-bottom: 0.1rem;}
     .nexus-subtitle {color: #667085; margin-bottom: 1.1rem;}
     .section-title {font-size: 1.35rem; font-weight: 700; margin-top: .4rem; margin-bottom: .7rem;}
     .status-card {border: 1px solid #e6e8ec; border-radius: 12px; padding: 14px 16px; background: #ffffff;}
@@ -165,21 +165,14 @@ if page == "SOC Dashboard":
             """
             <style>
             div[data-testid="stVerticalBlockBorderWrapper"] {
-                border-radius: 18px;
-                border: 1px solid #cbd8e8;
-                box-shadow: 0 8px 24px rgba(15, 23, 42, 0.10);
-                background: #f3f8fe;
+                border-radius: 14px;
+                border: 1px solid #cbd9e8;
+                box-shadow: 0 5px 16px rgba(15, 23, 42, 0.08);
+                background: #eef5fb;
                 overflow: hidden;
-                margin-bottom: 18px;
             }
             div[data-testid="stVerticalBlockBorderWrapper"] > div {
-                background: #f3f8fe;
-                border-radius: 18px;
-            }
-            div[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stPlotlyChart"] {
-                background: #f3f8fe;
-                border-radius: 14px;
-                padding: 6px 8px 2px 8px;
+                background: #eef5fb;
             }
             </style>
             """,
@@ -248,13 +241,10 @@ if page == "SOC Dashboard":
 
                 fig.update_layout(
                     height=330,
-                    margin=dict(l=10, r=10, t=28, b=10),
+                    margin=dict(l=10, r=10, t=18, b=10),
                     showlegend=(chart_type in ("Pie", "Donut")),
-                    paper_bgcolor="#f3f8fe",
-                    plot_bgcolor="#e8f2fc",
-                    font=dict(color="#23344d"),
-                    xaxis=dict(showgrid=True, gridcolor="#d4e2f0", zerolinecolor="#c5d5e5"),
-                    yaxis=dict(showgrid=True, gridcolor="#d4e2f0", zerolinecolor="#c5d5e5"),
+                    paper_bgcolor="#eef5fb",
+                    plot_bgcolor="#eef5fb",
                 )
                 st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": True, "displaylogo": False})
 
