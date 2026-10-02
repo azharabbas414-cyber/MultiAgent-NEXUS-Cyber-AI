@@ -63,7 +63,7 @@ with st.sidebar:
     st.header("Navigation")
     page = st.radio(
         "Select module",
-        ["SOC Dashboard", "Data Sources", "Data Inspector", "AI SOC Command Center", "SOC Investigation"],
+        ["SOC Dashboard", "Data Sources", "Data Inspector", "SOC Investigation"],
         key="page",
     )
     st.divider()
@@ -657,38 +657,6 @@ elif page == "Data Inspector":
             st.success("🟢 READY FOR AI ANALYSIS")
         else:
             st.warning("🟡 REVIEW DATA QUALITY BEFORE AI ANALYSIS")
-
-# -----------------------------
-# AI SOC Command Center
-# -----------------------------
-elif page == "AI SOC Command Center":
-    st.subheader("🤖 AI SOC Command Center")
-    st.caption("Operational view of the NEXUS multi-agent system. This replaces the old static agent-definition screen with live workflow context.")
-
-    snapshot = agent_monitor(st.session_state.workflow_job_id)
-    st.divider()
-    st.markdown('<div class="section-title">Agent Roles</div>', unsafe_allow_html=True)
-    descriptions = {
-        "Investigation Coordinator Agent": "Coordinates the investigation, delegates stages and tracks handoffs.",
-        "Security Analysis Agent": "Correlates events, reconstructs timelines and identifies suspicious activity.",
-        "Threat Intelligence Agent": "Investigates indicators using the available NEXUS knowledge base.",
-        "Risk & Business Agent": "Maps findings to asset, service and business impact.",
-        "Response & Automation Agent": "Prepares response plans, reports and escalation artifacts for human approval.",
-    }
-    cols = st.columns(5)
-    for col, name in zip(cols, AGENT_NAMES):
-        col.markdown(f"**{name.replace(' Agent','')}**")
-        col.caption(descriptions[name])
-
-    if snapshot and snapshot.get("result"):
-        st.divider()
-        st.markdown('<div class="section-title">Latest Investigation Outputs</div>', unsafe_allow_html=True)
-        result = snapshot["result"]
-        tabs = st.tabs(["Investigation Coordinator", "Security", "Threat Intel", "Risk & Business", "Response"])
-        outputs = [result["orchestrator"], result["security_analysis"], result["threat_intelligence"], result["risk_business"], result["response_automation"]]
-        for tab, output in zip(tabs, outputs):
-            with tab:
-                st.markdown(output)
 
 # -----------------------------
 # SOC Investigation
