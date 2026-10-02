@@ -159,6 +159,22 @@ if page == "SOC Dashboard":
         # -----------------------------
         # Interactive chart builder
         # -----------------------------
+        # Give every chart its own subtle card/border so the analytics area
+        # feels like a professional SOC dashboard rather than one flat canvas.
+        st.markdown(
+            """
+            <style>
+            div[data-testid="stVerticalBlockBorderWrapper"] {
+                border-radius: 14px;
+                border: 1px solid rgba(49, 51, 63, 0.12);
+                box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+                background: rgba(255, 255, 255, 0.72);
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
         def render_chart(data, category_col, value_col, title, key, default_type="Bar", horizontal=False, timeline=False):
             if data is None or data.empty:
                 st.info(f"{title} needs usable data.")
@@ -169,57 +185,58 @@ if page == "SOC Dashboard":
             if state_key not in st.session_state:
                 st.session_state[state_key] = default_type
 
-            # Compact chart-type control beside the graph title instead of taking
-            # a full row. The gear button opens a small popover for Bar/Line/Pie/Donut.
-            title_col, control_col = st.columns([0.94, 0.06], vertical_alignment="center")
-            with title_col:
-                st.markdown(f"**{title}**")
-            with control_col:
-                with st.popover("⚙", help="Change chart type"):
-                    st.caption("Chart type")
-                    st.radio(
-                        "",
-                        options,
-                        index=options.index(st.session_state[state_key]),
-                        key=f"chart_type_picker_{key}",
-                        label_visibility="collapsed",
-                    )
-                    st.session_state[state_key] = st.session_state[f"chart_type_picker_{key}"]
+            # Keep the chart-type control compact: the gear button lives in the
+            # chart card header instead of taking a separate row.
+            with st.container(border=True):
+                title_col, control_col = st.columns([0.94, 0.06], vertical_alignment="center")
+                with title_col:
+                    st.markdown(f"**{title}**")
+                with control_col:
+                    with st.popover("⚙", help="Change chart type"):
+                        st.caption("Chart type")
+                        st.radio(
+                            "",
+                            options,
+                            index=options.index(st.session_state[state_key]),
+                            key=f"chart_type_picker_{key}",
+                            label_visibility="collapsed",
+                        )
+                        st.session_state[state_key] = st.session_state[f"chart_type_picker_{key}"]
 
-            chart_type = st.session_state[state_key]
-            plot_data = data.copy()
-            if chart_type in ("Pie", "Donut"):
-                fig = px.pie(
-                    plot_data,
-                    names=category_col,
-                    values=value_col,
-                    title=None,
-                    hole=0.55 if chart_type == "Donut" else 0,
-                )
-                fig.update_traces(textposition="inside", textinfo="percent+label")
-            elif chart_type == "Line":
-                if horizontal:
-                    # Line charts are most readable with the category on X.
-                    fig = px.line(plot_data.sort_values(category_col), x=category_col, y=value_col, title=None, markers=True)
-                else:
-                    fig = px.line(plot_data, x=category_col, y=value_col, title=None, markers=True)
-                fig.update_layout(hovermode="x unified")
-            else:
-                if horizontal:
-                    fig = px.bar(
-                        plot_data.sort_values(value_col),
-                        x=value_col,
-                        y=category_col,
-                        orientation="h",
+                chart_type = st.session_state[state_key]
+                plot_data = data.copy()
+                if chart_type in ("Pie", "Donut"):
+                    fig = px.pie(
+                        plot_data,
+                        names=category_col,
+                        values=value_col,
                         title=None,
-                        text=value_col,
+                        hole=0.55 if chart_type == "Donut" else 0,
                     )
+                    fig.update_traces(textposition="inside", textinfo="percent+label")
+                elif chart_type == "Line":
+                    if horizontal:
+                        # Line charts are most readable with the category on X.
+                        fig = px.line(plot_data.sort_values(category_col), x=category_col, y=value_col, title=None, markers=True)
+                    else:
+                        fig = px.line(plot_data, x=category_col, y=value_col, title=None, markers=True)
+                    fig.update_layout(hovermode="x unified")
                 else:
-                    fig = px.bar(plot_data, x=category_col, y=value_col, title=None, text=value_col)
-                fig.update_traces(textposition="outside")
+                    if horizontal:
+                        fig = px.bar(
+                            plot_data.sort_values(value_col),
+                            x=value_col,
+                            y=category_col,
+                            orientation="h",
+                            title=None,
+                            text=value_col,
+                        )
+                    else:
+                        fig = px.bar(plot_data, x=category_col, y=value_col, title=None, text=value_col)
+                    fig.update_traces(textposition="outside")
 
-            fig.update_layout(height=330, margin=dict(l=10, r=10, t=55, b=10), showlegend=(chart_type in ("Pie", "Donut")))
-            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": True, "displaylogo": False})
+                fig.update_layout(height=330, margin=dict(l=10, r=10, t=55, b=10), showlegend=(chart_type in ("Pie", "Donut")))
+                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": True, "displaylogo": False})
 
         # Chart 1: event timeline
         timeline = pd.DataFrame()
