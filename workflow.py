@@ -18,6 +18,8 @@ import os
 from pathlib import Path
 from typing import Any, Callable
 
+import pandas as pd
+
 from crewai import Crew, LLM, Process, Task
 from crewai.flow.flow import Flow, listen, start
 from pydantic import BaseModel, Field
@@ -123,10 +125,69 @@ def _knowledge_context() -> str:
     return _clip("\n".join(parts), 3000)
 
 
+def _is_pcap_dataframe(df: Any) -> bool:
+    """Identify the packet-level dataframe produced by NEXUS PCAP ingestion."""
+    if df is None:
+        return False
+    cols = {str(c).lower() for c in getattr(df, "columns", [])}
+    pcap_markers = {"protocol", "source_port", "destination_port", "packet_length", "tcp_flags"}
+    return len(cols & pcap_markers) >= 2
+
+
+def _pcap_summary(df: Any) -> str:
+    """Create compact deterministic network intelligence from packet rows.
+
+    The LLM receives summaries and small samples rather than hundreds/thousands
+    of packet rows. This keeps the five-agent workflow focused on network-level
+    evidence while retaining traceability to representative packets.
+    """
+    work = df.copy()
+    parts: list[str] = [
+        "PCAP NETWORK INTELLIGENCE SUMMARY",
+        f"Packet/evidence rows: {len(work)}",
+    ]
+    if "timestamp" in work.columns:
+        ts = pd.to_datetime(work["timestamp"], errors="coerce")
+        if ts.notna().any():
+            parts.append(f"Time range: {ts.min()} to {ts.max()}")
+    if "protocol" in work.columns:
+        parts.append("Protocols: " + json.dumps(work["protocol"].astype(str).value_counts().head(12).to_dict(), default=str))
+    if "source_ip" in work.columns:
+        parts.append("Top source IPs: " + json.dumps(work["source_ip"].astype(str).value_counts().head(12).to_dict(), default=str))
+    if "destination_ip" in work.columns:
+        parts.append("Top destination IPs: " + json.dumps(work["destination_ip"].astype(str).value_counts().head(12).to_dict(), default=str))
+    if "destination_port" in work.columns:
+        parts.append("Top destination ports: " + json.dumps(work["destination_port"].astype(str).value_counts().head(15).to_dict(), default=str))
+    if "source_port" in work.columns:
+        parts.append("Top source ports: " + json.dumps(work["source_port"].astype(str).value_counts().head(15).to_dict(), default=str))
+    if "event_type" in work.columns:
+        parts.append("Packet/event types: " + json.dumps(work["event_type"].astype(str).value_counts().head(12).to_dict(), default=str))
+    if "tcp_flags" in work.columns:
+        flags = work["tcp_flags"].astype(str)
+        flags = flags[flags.str.strip().ne("")]
+        if len(flags):
+            parts.append("TCP flags: " + json.dumps(flags.value_counts().head(12).to_dict(), default=str))
+    if "packet_length" in work.columns:
+        numeric = pd.to_numeric(work["packet_length"], errors="coerce")
+        if numeric.notna().any():
+            parts.append(f"Packet length: min={numeric.min():.0f}, mean={numeric.mean():.1f}, max={numeric.max():.0f}")
+
+    # Representative evidence only: first, largest, and a small deterministic sample.
+    sample_cols = [c for c in ["timestamp", "event_id", "source_ip", "destination_ip", "protocol", "source_port", "destination_port", "packet_length", "tcp_flags", "event_type"] if c in work.columns]
+    if sample_cols:
+        sample = work[sample_cols].head(12).where(lambda x: x.notna(), None).to_dict(orient="records")
+        parts.append("Representative packet evidence: " + json.dumps(sample, default=str))
+
+    return _clip("\n".join(parts), 5200)
+
+
 def _dataset_context(df: Any, incident_id: str) -> str:
-    """Create a bounded evidence payload for the selected incident."""
+    """Create bounded evidence payload; PCAPs use summarized network intelligence."""
     if df is None or len(df) == 0:
         return "No security dataset was supplied."
+
+    if _is_pcap_dataframe(df):
+        return _pcap_summary(df)
 
     work = df.copy()
     if "incident_id" in work.columns and incident_id:
@@ -134,7 +195,6 @@ def _dataset_context(df: Any, incident_id: str) -> str:
         if len(filtered) > 0:
             work = filtered
 
-    # Keep prompts bounded while preserving all columns needed for analysis.
     work = work.head(100)
     records = work.where(work.notna(), None).to_dict(orient="records")
     return _clip(json.dumps(records, indent=2, default=str), 3000)
