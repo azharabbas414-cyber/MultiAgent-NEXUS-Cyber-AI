@@ -91,7 +91,8 @@ def severity_counts(df: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame()
     order = ["critical", "high", "medium", "low", "info"]
     counts = df["severity"].astype(str).str.lower().value_counts()
-    return counts.reindex(order).fillna(0).astype(int).to_frame("Events")
+    counts = counts.reindex(order).fillna(0).astype(int)
+    return counts.rename_axis("Severity").reset_index(name="Events")
 
 
 def agent_monitor(job_id: str | None):
@@ -173,7 +174,7 @@ if page == "SOC Dashboard":
         # Charts 2 and 3
         left, right = st.columns(2)
         with left:
-            sev = severity_counts(df).reset_index().rename(columns={"index": "Severity"})
+            sev = severity_counts(df)
             if not sev.empty:
                 fig = px.bar(sev, x="Severity", y="Events", color="Severity", title="Events by Severity", text="Events")
                 fig.update_layout(height=330, margin=dict(l=10, r=10, t=55, b=10), showlegend=False)
