@@ -18,8 +18,8 @@ st.set_page_config(page_title=APP_NAME, page_icon="🛡️", layout="wide", init
 st.markdown(
     """
     <style>
-    .block-container {padding-top: 1.2rem; padding-bottom: 2rem;}
-    .nexus-title {font-size: 2.1rem; font-weight: 750; margin-bottom: 0.1rem;}
+    .block-container {padding-top: 2.6rem; padding-bottom: 2rem;}
+    .nexus-title {font-size: 2.1rem; line-height: 1.25; font-weight: 750; margin-bottom: 0.1rem; overflow: visible;}
     .nexus-subtitle {color: #667085; margin-bottom: 1.1rem;}
     .section-title {font-size: 1.35rem; font-weight: 700; margin-top: .4rem; margin-bottom: .7rem;}
     .status-card {border: 1px solid #e6e8ec; border-radius: 12px; padding: 14px 16px; background: #ffffff;}
@@ -166,9 +166,10 @@ if page == "SOC Dashboard":
             <style>
             div[data-testid="stVerticalBlockBorderWrapper"] {
                 border-radius: 14px;
-                border: 1px solid rgba(49, 51, 63, 0.12);
-                box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
-                background: rgba(255, 255, 255, 0.72);
+                border: 1px solid rgba(49, 51, 63, 0.14);
+                box-shadow: 0 5px 16px rgba(15, 23, 42, 0.08);
+                background: #f8fafc;
+                padding: 4px 6px 8px 6px;
             }
             </style>
             """,
@@ -235,7 +236,7 @@ if page == "SOC Dashboard":
                         fig = px.bar(plot_data, x=category_col, y=value_col, title=None, text=value_col)
                     fig.update_traces(textposition="outside")
 
-                fig.update_layout(height=330, margin=dict(l=10, r=10, t=55, b=10), showlegend=(chart_type in ("Pie", "Donut")))
+                fig.update_layout(height=330, margin=dict(l=10, r=10, t=20, b=10), showlegend=(chart_type in ("Pie", "Donut")), paper_bgcolor="#f8fafc", plot_bgcolor="#eef5fb", font=dict(color="#334155"))
                 st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": True, "displaylogo": False})
 
         # Chart 1: event timeline
