@@ -28,6 +28,8 @@ Optional:
 
 ```toml
 GROK_MODEL = "openai/gpt-oss-120b"
+
+Note: the workflow internally compensates for CrewAI custom_openai prefix handling so Groq receives the exact model ID `openai/gpt-oss-120b`.
 GROK_BASE_URL = "https://api.groq.com/openai/v1"
 ```
 
@@ -53,3 +55,21 @@ python3 -m streamlit run app.py
 
 ### Streamlit/CrewAI execution note
 The Streamlit SOC Investigation page runs the CrewAI Flow in a background worker and polls a thread-safe job registry stored in a separate imported module. This is important because Streamlit reruns `app.py`, which would otherwise recreate module-level job state. Streamlit secrets are read on the UI thread and passed into the worker; the worker never calls Streamlit APIs.
+
+
+Milestone 4 v4: bounded inter-agent context and reduced output token budget to stay within Groq TPM limits.
+
+
+## Milestone 5 — SOC Dashboard
+
+Milestone 5 adds the operational Streamlit SOC experience on top of the verified Milestone 4 workflow:
+
+- SOC Dashboard with security-event, incident, severity and asset KPIs
+- Severity and event-type visualizations
+- Incident Queue with evidence preview and one-click investigation handoff
+- AI SOC Command Center replacing the old static agent-definition page
+- Live agent status and latest investigation outputs
+- Existing Data Sources, Data Inspector and SOC Investigation preserved
+- Human approval remains required for consequential response actions
+
+No production network/device/endpoint changes are executed by NEXUS.
