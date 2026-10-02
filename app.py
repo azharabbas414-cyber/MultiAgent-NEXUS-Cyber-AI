@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+import plotly.express as px
 
 from config import APP_NAME, APP_FULL_NAME, SAMPLE_DATA_PATH
 from data_loader import load_uploaded_file, load_from_url, prepare_dataset
@@ -26,6 +27,10 @@ st.markdown(
     .status-value {font-size: 1.25rem; font-weight: 700;}
     .agent-current {border-left: 5px solid #3b82f6; background: #eff6ff; padding: 12px 15px; border-radius: 8px;}
     .small-muted {font-size: .84rem; color: #667085;}
+    .dashboard-header {background: linear-gradient(135deg, #0f172a 0%, #1e293b 55%, #0f766e 100%); color: white; padding: 22px 24px; border-radius: 16px; margin-bottom: 18px;}
+    .dashboard-header h2 {margin: 0 0 5px 0; color: white;}
+    .dashboard-header p {margin: 0; color: #dbeafe;}
+    .kpi-card {border: 1px solid #e5e7eb; border-radius: 14px; padding: 8px 12px; background: #ffffff; box-shadow: 0 2px 8px rgba(15,23,42,.05);}
     </style>
     """,
     unsafe_allow_html=True,
@@ -119,50 +124,97 @@ def agent_monitor(job_id: str | None):
 # SOC Dashboard
 # -----------------------------
 if page == "SOC Dashboard":
-    st.subheader("🏠 SOC Dashboard")
-    st.caption("Executive security overview of the currently loaded security dataset. The built-in synthetic dataset is shown when no custom dataset has been loaded.")
-
     df = get_dashboard_df()
     if df is None or df.empty:
         st.warning("No security dataset is available. Go to Data Sources to load one.")
     else:
         source_label = st.session_state.dataset_name or "Built-in synthetic dataset"
-        st.caption(f"Data: **{source_label}** · {len(df):,} events")
+        st.markdown(
+            f"""<div class="dashboard-header"><h2>🛡️ NEXUS SOC Dashboard</h2>
+            <p>Security operations overview · {source_label} · {len(df):,} events</p></div>""",
+            unsafe_allow_html=True,
+        )
 
         incidents = int(df["incident_id"].nunique()) if "incident_id" in df.columns else 0
         critical = int((df["severity"].astype(str).str.lower() == "critical").sum()) if "severity" in df.columns else 0
         high = int((df["severity"].astype(str).str.lower() == "high").sum()) if "severity" in df.columns else 0
         assets = int(df["asset"].nunique()) if "asset" in df.columns else 0
+        suspicious = int(df["action"].astype(str).str.lower().str.contains("suspicious|blocked|failed|denied", regex=True).sum()) if "action" in df.columns else 0
 
-        c1, c2, c3, c4, c5 = st.columns(5)
-        c1.metric("Security Events", f"{len(df):,}")
-        c2.metric("Incidents", f"{incidents:,}")
-        c3.metric("Critical Events", f"{critical:,}")
-        c4.metric("High Events", f"{high:,}")
-        c5.metric("Affected Assets", f"{assets:,}")
+        kpis = st.columns(5)
+        for col, label, value in zip(
+            kpis,
+            ["Security Events", "Incidents", "Critical Events", "High Events", "Affected Assets"],
+            [len(df), incidents, critical, high, assets],
+        ):
+            with col:
+                st.markdown('<div class="kpi-card">', unsafe_allow_html=True)
+                st.metric(label, f"{value:,}")
+                st.markdown('</div>', unsafe_allow_html=True)
 
-        st.divider()
+        st.markdown("### 📊 Security Analytics")
+        st.caption(f"{suspicious:,} events contain suspicious/blocked/failed/denied activity markers. Charts update automatically when you load another dataset.")
+
+        # Chart 1: event timeline
+        timeline = pd.DataFrame()
+        if "timestamp" in df.columns:
+            temp = df.copy()
+            temp["timestamp"] = pd.to_datetime(temp["timestamp"], errors="coerce")
+            temp = temp.dropna(subset=["timestamp"])
+            if not temp.empty:
+                timeline = temp.set_index("timestamp").resample("D").size().reset_index(name="Events")
+        if not timeline.empty:
+            fig = px.line(timeline, x="timestamp", y="Events", markers=True, title="Security Event Timeline", labels={"timestamp": "Date", "Events": "Events"})
+            fig.update_layout(height=320, margin=dict(l=10, r=10, t=55, b=10), hovermode="x unified")
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        else:
+            st.info("Timeline chart needs a valid timestamp column.")
+
+        # Charts 2 and 3
         left, right = st.columns(2)
         with left:
-            st.markdown('<div class="section-title">Severity Distribution</div>', unsafe_allow_html=True)
-            sev = severity_counts(df)
+            sev = severity_counts(df).reset_index().rename(columns={"index": "Severity"})
             if not sev.empty:
-                st.bar_chart(sev, horizontal=True, use_container_width=True)
+                fig = px.bar(sev, x="Severity", y="Events", color="Severity", title="Events by Severity", text="Events")
+                fig.update_layout(height=330, margin=dict(l=10, r=10, t=55, b=10), showlegend=False)
+                fig.update_traces(textposition="outside")
+                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
         with right:
-            st.markdown('<div class="section-title">Event Types</div>', unsafe_allow_html=True)
+            if "source_ip" in df.columns:
+                src = df["source_ip"].astype(str).value_counts().head(8).rename_axis("Source IP").reset_index(name="Events")
+                fig = px.bar(src.sort_values("Events"), x="Events", y="Source IP", orientation="h", title="Top Source IPs", text="Events")
+                fig.update_layout(height=330, margin=dict(l=10, r=10, t=55, b=10))
+                fig.update_traces(textposition="outside")
+                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+        # Charts 4 and 5
+        left, right = st.columns(2)
+        with left:
             if "event_type" in df.columns:
-                et = df["event_type"].astype(str).value_counts().head(8).to_frame("Events")
-                st.bar_chart(et, horizontal=True, use_container_width=True)
+                et = df["event_type"].astype(str).value_counts().head(8).rename_axis("Event Type").reset_index(name="Events")
+                fig = px.bar(et.sort_values("Events"), x="Events", y="Event Type", orientation="h", title="Top Security Event Types", text="Events")
+                fig.update_layout(height=330, margin=dict(l=10, r=10, t=55, b=10))
+                fig.update_traces(textposition="outside")
+                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+        with right:
+            if "asset" in df.columns:
+                asset_counts = df["asset"].astype(str).value_counts().head(8).rename_axis("Asset").reset_index(name="Events")
+                fig = px.bar(asset_counts.sort_values("Events"), x="Events", y="Asset", orientation="h", title="Most Affected Assets", text="Events")
+                fig.update_layout(height=330, margin=dict(l=10, r=10, t=55, b=10))
+                fig.update_traces(textposition="outside")
+                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
         st.divider()
         left, right = st.columns(2)
         with left:
-            st.markdown('<div class="section-title">Top Affected Assets</div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-title">📋 Top Affected Assets</div>', unsafe_allow_html=True)
             if "asset" in df.columns:
                 assets_df = df["asset"].astype(str).value_counts().head(8).rename_axis("Asset").reset_index(name="Events")
                 st.dataframe(assets_df, use_container_width=True, hide_index=True)
         with right:
-            st.markdown('<div class="section-title">Incident Overview</div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-title">🧾 Incident Overview</div>', unsafe_allow_html=True)
             if "incident_id" in df.columns:
                 inc = df.groupby("incident_id").agg(
                     Events=("event_id", "count"),
