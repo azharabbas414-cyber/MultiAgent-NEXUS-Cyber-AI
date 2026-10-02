@@ -438,15 +438,44 @@ elif page == "Data Inspector":
             st.info("No column renaming was required.")
         st.subheader("Incident Summary")
         if "incident_id" in df.columns:
-            incident_summary = df.groupby("incident_id").agg(
-                Events=("event_id", "count"),
-                Highest_Severity=("severity", lambda s: "critical" if "critical" in s.astype(str).str.lower().values else ("high" if "high" in s.astype(str).str.lower().values else ("medium" if "medium" in s.astype(str).str.lower().values else str(s.iloc[0])))),
-                Assets=("asset", lambda s: ", ".join(pd.unique(s.astype(str))[:3])) if "asset" in df.columns else ("event_id", "count"),
-                Users=("user", lambda s: ", ".join(pd.unique(s.astype(str))[:3])) if "user" in df.columns else ("event_id", "count"),
-                Services=("business_service", lambda s: ", ".join(pd.unique(s.astype(str))[:3])) if "business_service" in df.columns else ("event_id", "count"),
-            ).reset_index()
+            # PCAP datasets intentionally do not contain the normal incident
+            # fields such as severity/asset/user/business_service. Build the
+            # summary dynamically so inspection never fails with a pandas
+            # KeyError when a valid PCAP is loaded.
+            work = df.copy()
+            if "event_id" in work.columns:
+                events_series = work.groupby("incident_id")["event_id"].count().rename("Events")
+            else:
+                events_series = work.groupby("incident_id").size().rename("Events")
+
+            incident_summary = events_series.reset_index()
+
+            if "severity" in work.columns:
+                def _highest_severity(series):
+                    values = series.dropna().astype(str).str.lower().tolist()
+                    for level in ("critical", "high", "medium", "low", "info"):
+                        if level in values:
+                            return level
+                    return values[0] if values else "unknown"
+                severity_df = work.groupby("incident_id")["severity"].agg(_highest_severity).reset_index(name="Highest_Severity")
+                incident_summary = incident_summary.merge(severity_df, on="incident_id", how="left")
+
+            for source_col, output_col in [
+                ("asset", "Assets"),
+                ("user", "Users"),
+                ("business_service", "Services"),
+            ]:
+                if source_col in work.columns:
+                    values_df = work.groupby("incident_id")[source_col].agg(
+                        lambda s: ", ".join(pd.unique(s.dropna().astype(str))[:3])
+                    ).reset_index(name=output_col)
+                    incident_summary = incident_summary.merge(values_df, on="incident_id", how="left")
+
             st.dataframe(incident_summary.sort_values("Events", ascending=False), use_container_width=True, hide_index=True)
-            st.caption("Use SOC Investigation to select an incident and run the five-agent AI investigation. This section is for inspection only.")
+            if "protocol" in df.columns and "PCAP-DATASET" in set(df["incident_id"].astype(str)):
+                st.caption("PCAP dataset detected. Packet-level network intelligence is available for SOC Investigation; incident fields such as severity, user and business service are not inferred from packets.")
+            else:
+                st.caption("Use SOC Investigation to select an incident and run the five-agent AI investigation. This section is for inspection only.")
         else:
             st.info("No incident_id field is available in this dataset.")
         st.divider()
