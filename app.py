@@ -156,6 +156,51 @@ if page == "SOC Dashboard":
         st.markdown("### 📊 Security Analytics")
         st.caption(f"{suspicious:,} events contain suspicious/blocked/failed/denied activity markers. Charts update automatically when you load another dataset.")
 
+        # -----------------------------
+        # Interactive chart builder
+        # -----------------------------
+        def render_chart(data, category_col, value_col, title, key, default_type="Bar", horizontal=False, timeline=False):
+            if data is None or data.empty:
+                st.info(f"{title} needs usable data.")
+                return
+
+            options = ["Bar", "Line", "Pie", "Donut"]
+            chart_type = st.selectbox("Chart type", options, index=options.index(default_type), key=f"chart_type_{key}")
+
+            plot_data = data.copy()
+            if chart_type in ("Pie", "Donut"):
+                fig = px.pie(
+                    plot_data,
+                    names=category_col,
+                    values=value_col,
+                    title=title,
+                    hole=0.55 if chart_type == "Donut" else 0,
+                )
+                fig.update_traces(textposition="inside", textinfo="percent+label")
+            elif chart_type == "Line":
+                if horizontal:
+                    # Line charts are most readable with the category on X.
+                    fig = px.line(plot_data.sort_values(category_col), x=category_col, y=value_col, title=title, markers=True)
+                else:
+                    fig = px.line(plot_data, x=category_col, y=value_col, title=title, markers=True)
+                fig.update_layout(hovermode="x unified")
+            else:
+                if horizontal:
+                    fig = px.bar(
+                        plot_data.sort_values(value_col),
+                        x=value_col,
+                        y=category_col,
+                        orientation="h",
+                        title=title,
+                        text=value_col,
+                    )
+                else:
+                    fig = px.bar(plot_data, x=category_col, y=value_col, title=title, text=value_col)
+                fig.update_traces(textposition="outside")
+
+            fig.update_layout(height=330, margin=dict(l=10, r=10, t=55, b=10), showlegend=(chart_type in ("Pie", "Donut")))
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": True, "displaylogo": False})
+
         # Chart 1: event timeline
         timeline = pd.DataFrame()
         if "timestamp" in df.columns:
@@ -163,12 +208,24 @@ if page == "SOC Dashboard":
             temp["timestamp"] = pd.to_datetime(temp["timestamp"], errors="coerce")
             temp = temp.dropna(subset=["timestamp"])
             if not temp.empty:
-                timeline = temp.set_index("timestamp").resample("D").size().reset_index(name="Events")
-        if not timeline.empty:
-            fig = px.line(timeline, x="timestamp", y="Events", markers=True, title="Security Event Timeline", labels={"timestamp": "Date", "Events": "Events"})
-            fig.update_layout(height=320, margin=dict(l=10, r=10, t=55, b=10), hovermode="x unified")
-            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-        else:
+                span = temp["timestamp"].max() - temp["timestamp"].min()
+                if span <= pd.Timedelta(hours=6):
+                    freq = "15min"
+                    granularity = "15-minute"
+                elif span <= pd.Timedelta(days=2):
+                    freq = "1h"
+                    granularity = "hourly"
+                else:
+                    freq = "1D"
+                    granularity = "daily"
+                timeline = temp.set_index("timestamp").resample(freq).size().reset_index(name="Events")
+                timeline = timeline[timeline["Events"] > 0]
+                if not timeline.empty:
+                    timeline["Time Period"] = timeline["timestamp"].dt.strftime("%d %b %H:%M") if freq != "1D" else timeline["timestamp"].dt.strftime("%d %b %Y")
+                    st.markdown("**Security Event Activity Over Time**")
+                    st.caption(f"Automatically using {granularity} intervals based on the dataset time range.")
+                    render_chart(timeline, "Time Period", "Events", "Security Event Activity Over Time", "timeline", default_type="Line", timeline=True)
+        if timeline.empty:
             st.info("Timeline chart needs a valid timestamp column.")
 
         # Charts 2 and 3
@@ -176,36 +233,24 @@ if page == "SOC Dashboard":
         with left:
             sev = severity_counts(df)
             if not sev.empty:
-                fig = px.bar(sev, x="Severity", y="Events", color="Severity", title="Events by Severity", text="Events")
-                fig.update_layout(height=330, margin=dict(l=10, r=10, t=55, b=10), showlegend=False)
-                fig.update_traces(textposition="outside")
-                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+                render_chart(sev, "Severity", "Events", "Events by Severity", "severity", default_type="Bar")
 
         with right:
             if "source_ip" in df.columns:
                 src = df["source_ip"].astype(str).value_counts().head(8).rename_axis("Source IP").reset_index(name="Events")
-                fig = px.bar(src.sort_values("Events"), x="Events", y="Source IP", orientation="h", title="Top Source IPs", text="Events")
-                fig.update_layout(height=330, margin=dict(l=10, r=10, t=55, b=10))
-                fig.update_traces(textposition="outside")
-                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+                render_chart(src, "Source IP", "Events", "Top Source IPs", "source_ip", default_type="Bar", horizontal=True)
 
         # Charts 4 and 5
         left, right = st.columns(2)
         with left:
             if "event_type" in df.columns:
                 et = df["event_type"].astype(str).value_counts().head(8).rename_axis("Event Type").reset_index(name="Events")
-                fig = px.bar(et.sort_values("Events"), x="Events", y="Event Type", orientation="h", title="Top Security Event Types", text="Events")
-                fig.update_layout(height=330, margin=dict(l=10, r=10, t=55, b=10))
-                fig.update_traces(textposition="outside")
-                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+                render_chart(et, "Event Type", "Events", "Top Security Event Types", "event_type", default_type="Bar", horizontal=True)
 
         with right:
             if "asset" in df.columns:
                 asset_counts = df["asset"].astype(str).value_counts().head(8).rename_axis("Asset").reset_index(name="Events")
-                fig = px.bar(asset_counts.sort_values("Events"), x="Events", y="Asset", orientation="h", title="Most Affected Assets", text="Events")
-                fig.update_layout(height=330, margin=dict(l=10, r=10, t=55, b=10))
-                fig.update_traces(textposition="outside")
-                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+                render_chart(asset_counts, "Asset", "Events", "Most Affected Assets", "assets", default_type="Bar", horizontal=True)
 
         st.divider()
         left, right = st.columns(2)
