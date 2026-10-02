@@ -1,7 +1,7 @@
 """NEXUS Cyber AI — Milestone 4 multi-agent SOC workflow.
 
 The workflow is deliberately structured and human-controlled:
-1. SOC Orchestrator
+1. Investigation Coordinator
 2. Security Analysis
 3. Threat Intelligence
 4. Risk & Business
@@ -158,7 +158,7 @@ class NexusSOCFlow(Flow[NexusWorkflowState]):
         self.state.incident_context = incident_context
         self.state.knowledge_context = _knowledge_context()
         self.state.statuses = {
-            "SOC Orchestrator Agent": "Waiting",
+            "Investigation Coordinator Agent": "Waiting",
             "Security Analysis Agent": "Waiting",
             "Threat Intelligence Agent": "Waiting",
             "Risk & Business Agent": "Waiting",
@@ -172,7 +172,7 @@ class NexusSOCFlow(Flow[NexusWorkflowState]):
 
     @start()
     def orchestrate(self) -> str:
-        agent_name = "SOC Orchestrator Agent"
+        agent_name = "Investigation Coordinator Agent"
         self._status(agent_name, "WORKING", "Understanding the incident and planning the investigation")
         self._llm = build_llm(self.llm_config)
         agents = build_agents(self._llm)
@@ -180,7 +180,7 @@ class NexusSOCFlow(Flow[NexusWorkflowState]):
         result = _run_single_agent(
             agents["orchestrator"],
             f"""
-You are the SOC Orchestrator for NEXUS Cyber AI.
+You are the Investigation Coordinator for NEXUS Cyber AI.
 
 Incident ID: {self.state.incident_id}
 Security evidence:
