@@ -1,0 +1,18 @@
+timestamp,event_id,event_type,source_ip,destination_ip,user,asset,severity,action,indicator,threat_type,business_service,business_criticality,incident_id
+2026-10-01 08:12:03,EVT-1001,login,185.77.21.44,10.10.10.25,ahmad,LAPTOP-AHMAD,high,failed_login,185.77.21.44,credential_attack,ERP,high,INC-1001
+2026-10-01 08:13:10,EVT-1002,login,185.77.21.44,10.10.10.25,ahmad,LAPTOP-AHMAD,high,failed_login,185.77.21.44,credential_attack,ERP,high,INC-1001
+2026-10-01 08:17:44,EVT-1003,login,185.77.21.44,10.10.10.25,ahmad,LAPTOP-AHMAD,critical,success,185.77.21.44,account_compromise,ERP,high,INC-1001
+2026-10-01 08:20:15,EVT-1004,network,185.77.21.44,10.10.20.10,ahmad,LAPTOP-AHMAD,high,connection_allowed,185.77.21.44,malicious_ip,ERP,high,INC-1001
+2026-10-01 09:03:21,EVT-1005,dns,10.10.30.45,10.10.40.53,sara,PC-SARA,medium,query,login-secure-example.com,phishing_domain,Email,medium,INC-1002
+2026-10-01 09:04:02,EVT-1006,email,198.51.100.20,10.10.30.45,sara,PC-SARA,high,delivered,http://login-secure-example.com,phishing,Email,medium,INC-1002
+2026-10-01 09:06:33,EVT-1007,endpoint,10.10.30.45,10.10.30.45,sara,PC-SARA,high,file_detected,9f2d7a8c-malware-hash,malware,Email,medium,INC-1002
+2026-10-01 09:08:41,EVT-1008,network,10.10.30.45,203.0.113.77,sara,PC-SARA,critical,connection_allowed,203.0.113.77,command_and_control,Email,medium,INC-1002
+2026-10-01 10:11:07,EVT-1009,vulnerability,scanner,10.10.50.15,-,WEB-SRV-01,high,detected,CVE-2026-0001,remote_code_execution,Customer Portal,critical,INC-1003
+2026-10-01 10:13:19,EVT-1010,network,203.0.113.88,10.10.50.15,-,WEB-SRV-01,high,connection_blocked,203.0.113.88,exploit_attempt,Customer Portal,critical,INC-1003
+2026-10-01 10:14:55,EVT-1011,ids,203.0.113.88,10.10.50.15,-,WEB-SRV-01,critical,alert,CVE-2026-0001,exploit_attempt,Customer Portal,critical,INC-1003
+2026-10-01 11:25:10,EVT-1012,login,10.20.10.44,10.10.60.20,admin1,JUMP-SERVER-01,medium,success,admin1,unusual_login,Network Management,critical,INC-1004
+2026-10-01 11:27:46,EVT-1013,network,10.20.10.44,10.10.60.20,admin1,JUMP-SERVER-01,high,connection_allowed,10.20.10.44,lateral_movement,Network Management,critical,INC-1004
+2026-10-01 11:29:31,EVT-1014,authentication,10.20.10.44,10.10.60.20,admin1,JUMP-SERVER-01,critical,privileged_access,admin1,privilege_abuse,Network Management,critical,INC-1004
+2026-10-01 12:40:12,EVT-1015,proxy,10.10.70.31,192.0.2.55,bilal,PC-BILAL,low,allowed,192.0.2.55,unknown_indicator,Web Browsing,low,INC-1005
+2026-10-01 12:42:38,EVT-1016,dns,10.10.70.31,10.10.40.53,bilal,PC-BILAL,medium,query,suspicious-example.net,suspicious_domain,Web Browsing,low,INC-1005
+2026-10-01 12:45:04,EVT-1017,endpoint,10.10.70.31,10.10.70.31,bilal,PC-BILAL,medium,file_detected,aabbccddeeff0011,potential_malware,Web Browsing,low,INC-1005
