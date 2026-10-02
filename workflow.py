@@ -43,35 +43,17 @@ class NexusWorkflowState(BaseModel):
     total_steps: int = 5
 
 
-def _get_secret(name: str, default: str = "") -> str:
-    """Read from Streamlit secrets when available, then environment."""
-    try:
-        import streamlit as st
-
-        value = st.secrets.get(name)
-        if value:
-            return str(value)
-    except Exception:
-        pass
-    return os.getenv(name, default)
-
-
-def build_llm() -> LLM:
-    """Build an OpenAI-compatible LLM for the configured Groq endpoint.
-
-    GROK_API_KEY is retained as the project's requested secret name. GROQ_API_KEY
-    is also accepted for convenience because the endpoint is Groq's API.
-    """
-    api_key = _get_secret("GROK_API_KEY") or _get_secret("GROQ_API_KEY")
+def build_llm(config: dict[str, str] | None = None) -> LLM:
+    """Build an OpenAI-compatible LLM. Secrets are supplied by the UI thread."""
+    config = config or {}
+    api_key = config.get("api_key") or os.getenv("GROK_API_KEY") or os.getenv("GROQ_API_KEY")
     if not api_key:
         raise ValueError(
             "GROK_API_KEY is not configured. Add it to Streamlit Secrets "
             "before running the AI workflow."
         )
-
-    model = _get_secret("GROK_MODEL", "openai/gpt-oss-120b")
-    base_url = _get_secret("GROK_BASE_URL", "https://api.groq.com/openai/v1")
-
+    model = config.get("model") or os.getenv("GROK_MODEL", "openai/gpt-oss-120b")
+    base_url = config.get("base_url") or os.getenv("GROK_BASE_URL", "https://api.groq.com/openai/v1")
     return LLM(
         model=model,
         custom_openai=True,
@@ -148,9 +130,11 @@ class NexusSOCFlow(Flow[NexusWorkflowState]):
         incident_id: str,
         incident_context: str,
         status_callback: StatusCallback | None = None,
+        llm_config: dict[str, str] | None = None,
     ) -> None:
         super().__init__()
         self.status_callback = status_callback
+        self.llm_config = llm_config or {}
         self.state.incident_id = incident_id
         self.state.incident_context = incident_context
         self.state.knowledge_context = _knowledge_context()
@@ -171,9 +155,9 @@ class NexusSOCFlow(Flow[NexusWorkflowState]):
     def orchestrate(self) -> str:
         agent_name = "SOC Orchestrator Agent"
         self._status(agent_name, "WORKING", "Understanding the incident and planning the investigation")
-        agents = build_agents(build_llm())
+        self._llm = build_llm(self.llm_config)
+        agents = build_agents(self._llm)
         self._agents = agents
-        self._llm = build_llm()
         result = _run_single_agent(
             agents["orchestrator"],
             f"""
@@ -354,6 +338,7 @@ def run_workflow(
     df: Any,
     incident_id: str,
     status_callback: StatusCallback | None = None,
+    llm_config: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Run the NEXUS five-agent investigation and return all stage outputs."""
     context = _dataset_context(df, incident_id)
@@ -361,6 +346,7 @@ def run_workflow(
         incident_id=incident_id,
         incident_context=context,
         status_callback=status_callback,
+        llm_config=llm_config,
     )
     flow.kickoff()
     state = flow.state

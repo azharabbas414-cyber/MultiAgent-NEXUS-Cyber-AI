@@ -1,93 +1,21 @@
 import streamlit as st
 import pandas as pd
 
-import threading
 import time
-import uuid
 
 from config import APP_NAME, APP_FULL_NAME, SAMPLE_DATA_PATH
 from data_loader import load_uploaded_file, load_from_url, prepare_dataset
 from agents import AGENT_NAMES, agent_status_template
 from workflow import run_workflow
+from workflow_jobs import create_job, get_snapshot
 
 
-# CrewAI Flow may execute work outside Streamlit's ScriptRunner context.
-# Therefore the background worker NEVER calls Streamlit APIs. It only updates
-# this thread-safe in-process job registry; the Streamlit page polls it.
-_WORKFLOW_JOBS = {}
-_WORKFLOW_LOCK = threading.Lock()
-
-
-def _new_workflow_job(df, incident_id):
-    job_id = uuid.uuid4().hex
-    with _WORKFLOW_LOCK:
-        _WORKFLOW_JOBS[job_id] = {
-            "status": "running",
-            "current_agent": "",
-            "detail": "Starting investigation",
-            "completed_steps": 0,
-            "total_steps": 5,
-            "statuses": {name: "Waiting" for name in AGENT_NAMES},
-            "result": None,
-            "error": None,
-        }
-
-    def update_status(agent_name, status, detail):
-        with _WORKFLOW_LOCK:
-            job = _WORKFLOW_JOBS.get(job_id)
-            if not job:
-                return
-            job["statuses"][agent_name] = status
-            job["detail"] = detail
-            job["current_agent"] = agent_name if status == "WORKING" else job.get("current_agent", "")
-            if status == "Completed":
-                job["completed_steps"] = {
-                    "SOC Orchestrator Agent": 1,
-                    "Security Analysis Agent": 2,
-                    "Threat Intelligence Agent": 3,
-                    "Risk & Business Agent": 4,
-                    "Response & Automation Agent": 5,
-                }.get(agent_name, job["completed_steps"])
-
-    def worker():
-        try:
-            result = run_workflow(df, incident_id, update_status)
-            with _WORKFLOW_LOCK:
-                job = _WORKFLOW_JOBS.get(job_id)
-                if job:
-                    job["result"] = result
-                    job["status"] = "completed"
-                    job["completed_steps"] = 5
-                    job["current_agent"] = ""
-                    job["detail"] = "Investigation complete"
-                    job["statuses"] = result.get("statuses", job["statuses"])
-        except Exception as exc:
-            with _WORKFLOW_LOCK:
-                job = _WORKFLOW_JOBS.get(job_id)
-                if job:
-                    job["status"] = "failed"
-                    job["error"] = f"{type(exc).__name__}: {exc}"
-                    job["detail"] = "Workflow failed"
-
-    threading.Thread(target=worker, daemon=True).start()
-    return job_id
+def _new_workflow_job(df, incident_id, llm_config):
+    return create_job(df.copy(), incident_id, llm_config)
 
 
 def _workflow_snapshot(job_id):
-    with _WORKFLOW_LOCK:
-        job = _WORKFLOW_JOBS.get(job_id)
-        if job is None:
-            return None
-        return {
-            "status": job["status"],
-            "current_agent": job["current_agent"],
-            "detail": job["detail"],
-            "completed_steps": job["completed_steps"],
-            "total_steps": job["total_steps"],
-            "statuses": dict(job["statuses"]),
-            "result": job["result"],
-            "error": job["error"],
-        }
+    return get_snapshot(job_id)
 
 
 st.set_page_config(page_title=APP_NAME, page_icon="🛡️", layout="wide")
@@ -280,11 +208,19 @@ else:
         job_id = st.session_state.workflow_job_id
         snapshot = _workflow_snapshot(job_id) if job_id else None
 
+        # Read Streamlit secrets on the ScriptRunner thread. The background
+        # worker must not access st.secrets because it has no Streamlit context.
+        llm_config = {
+            "api_key": str(st.secrets.get("GROK_API_KEY", "")) or str(st.secrets.get("GROQ_API_KEY", "")),
+            "model": str(st.secrets.get("GROK_MODEL", "openai/gpt-oss-120b")),
+            "base_url": str(st.secrets.get("GROK_BASE_URL", "https://api.groq.com/openai/v1")),
+        }
+
         # Start button only creates a background job. The worker never touches
         # Streamlit, which avoids NoSessionContext from CrewAI async execution.
         if st.button("🚀 Start AI Investigation", type="primary", use_container_width=True, disabled=bool(snapshot and snapshot["status"] == "running")):
             st.session_state.workflow_result = None
-            st.session_state.workflow_job_id = _new_workflow_job(df.copy(), incident_id)
+            st.session_state.workflow_job_id = _new_workflow_job(df, incident_id, llm_config)
             st.rerun()
 
         snapshot = _workflow_snapshot(st.session_state.workflow_job_id) if st.session_state.workflow_job_id else None

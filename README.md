@@ -52,4 +52,4 @@ python3 -m streamlit run app.py
 
 
 ### Streamlit/CrewAI execution note
-The Streamlit SOC Investigation page runs the CrewAI Flow in a background worker and polls a thread-safe job registry. The worker never calls Streamlit APIs, preventing `NoSessionContext` errors caused by UI calls from CrewAI execution contexts.
+The Streamlit SOC Investigation page runs the CrewAI Flow in a background worker and polls a thread-safe job registry stored in a separate imported module. This is important because Streamlit reruns `app.py`, which would otherwise recreate module-level job state. Streamlit secrets are read on the UI thread and passed into the worker; the worker never calls Streamlit APIs.
