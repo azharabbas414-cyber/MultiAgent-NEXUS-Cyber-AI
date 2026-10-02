@@ -183,6 +183,119 @@ def render_pcap_summary(df: pd.DataFrame) -> None:
         st.dataframe(flows, use_container_width=True, hide_index=True)
 
 
+
+def render_pcap_investigation_results(df: pd.DataFrame, result: dict) -> None:
+    """Render the post-SOC-investigation dashboard for a PCAP dataset."""
+    if df.attrs.get("nexus_dataset_type") != "pcap":
+        return
+
+    summary = df.attrs.get("pcap_summary", {})
+    st.markdown('<div class="dashboard-header"><h2>🔬 PCAP SOC Investigation Results</h2><p>AI investigation findings, network evidence and human-review recommendations.</p></div>', unsafe_allow_html=True)
+
+    protocol_counts = summary.get("protocol_counts", {})
+    tcp_flags = summary.get("tcp_flags", {})
+    services = summary.get("services", {})
+
+    st.markdown('<div class="section-title">📌 Investigation Overview</div>', unsafe_allow_html=True)
+    kpis = st.columns(6)
+    kpis[0].metric("Packets", f"{summary.get('packets', len(df)):,}")
+    kpis[1].metric("Flows", f"{summary.get('unique_flows', 0):,}")
+    kpis[2].metric("TCP", f"{protocol_counts.get('TCP', 0):,}")
+    kpis[3].metric("UDP", f"{protocol_counts.get('UDP', 0):,}")
+    kpis[4].metric("TCP RST", f"{tcp_flags.get('RST', 0):,}")
+    kpis[5].metric("Services", f"{len(services):,}")
+
+    st.caption(f"Source PCAP: **{df.attrs.get('pcap_filename', st.session_state.dataset_name or 'uploaded capture')}**")
+
+    st.markdown('<div class="section-title">🤖 Five-Agent Investigation Findings</div>', unsafe_allow_html=True)
+    finding_tabs = st.tabs(["🎯 Coordinator", "🔍 Security", "🌐 Threat Intel", "⚠️ Risk & Business", "🛠️ Response"])
+    outputs = [
+        result.get("orchestrator", "No coordinator output available."),
+        result.get("security_analysis", "No security analysis output available."),
+        result.get("threat_intelligence", "No threat intelligence output available."),
+        result.get("risk_business", "No risk/business output available."),
+        result.get("response_automation", "No response recommendation available."),
+    ]
+    for tab, output in zip(finding_tabs, outputs):
+        with tab:
+            st.markdown(output)
+
+    st.markdown('<div class="section-title">📊 Network Evidence After Investigation</div>', unsafe_allow_html=True)
+    left, right = st.columns(2)
+    with left:
+        proto = pd.DataFrame(list(protocol_counts.items()), columns=["Protocol", "Packets"])
+        if not proto.empty:
+            fig = px.pie(proto, names="Protocol", values="Packets", hole=0.55, title="Protocol Distribution")
+            fig.update_layout(height=320, margin=dict(l=10,r=10,t=50,b=10))
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    with right:
+        flags = pd.DataFrame(list(tcp_flags.items()), columns=["TCP Flag", "Packets"])
+        if not flags.empty:
+            fig = px.bar(flags.sort_values("Packets"), x="Packets", y="TCP Flag", orientation="h", title="TCP Flag Analysis")
+            fig.update_layout(height=320, margin=dict(l=10,r=10,t=50,b=10))
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+    left, right = st.columns(2)
+    with left:
+        src = pd.DataFrame(list(summary.get("top_source_ips", {}).items()), columns=["Source IP", "Packets"])
+        if not src.empty:
+            fig = px.bar(src.head(10).sort_values("Packets"), x="Packets", y="Source IP", orientation="h", title="Top Talkers")
+            fig.update_layout(height=320, margin=dict(l=10,r=10,t=50,b=10))
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    with right:
+        svc = pd.DataFrame(list(services.items()), columns=["Service", "Packets"])
+        if not svc.empty:
+            fig = px.bar(svc.head(10).sort_values("Packets"), x="Packets", y="Service", orientation="h", title="Observed Services")
+            fig.update_layout(height=320, margin=dict(l=10,r=10,t=50,b=10))
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+    st.markdown('<div class="section-title">🔎 Security Indicators for Human Review</div>', unsafe_allow_html=True)
+    indicators = []
+    rst = int(tcp_flags.get("RST", 0))
+    syn = int(tcp_flags.get("SYN", 0))
+    netbios = sum(int(v) for k, v in services.items() if str(k).startswith("NetBIOS"))
+    if rst:
+        indicators.append({"Indicator": "TCP RST activity", "Evidence": f"{rst:,} packets", "Interpretation": "Review connection resets in flow context; RST alone does not prove malicious activity."})
+    if syn:
+        indicators.append({"Indicator": "TCP SYN activity", "Evidence": f"{syn:,} packets", "Interpretation": "Review connection attempts and SYN/SYN-ACK relationships."})
+    if netbios:
+        indicators.append({"Indicator": "NetBIOS traffic", "Evidence": f"{netbios:,} packets", "Interpretation": "Review whether legacy discovery/name-service traffic is expected in this network."})
+    if not indicators:
+        indicators.append({"Indicator": "No rule-based indicators generated", "Evidence": "—", "Interpretation": "Continue with the AI findings and packet/flow evidence."})
+    st.dataframe(pd.DataFrame(indicators), use_container_width=True, hide_index=True)
+
+    st.markdown('<div class="section-title">🔗 Top Conversations</div>', unsafe_allow_html=True)
+    flows = pd.DataFrame(list(summary.get("top_flows", {}).items()), columns=["Conversation", "Packets"])
+    if not flows.empty:
+        st.dataframe(flows.head(20), use_container_width=True, hide_index=True)
+    else:
+        st.info("No conversation summary is available.")
+
+    with st.expander("📦 Evidence Explorer — inspect PCAP-derived data"):
+        evidence_tabs = st.tabs(["Packets", "Flows", "Conversations"])
+        with evidence_tabs[0]:
+            st.dataframe(df.head(250), use_container_width=True, hide_index=True)
+            st.caption(f"Showing the first 250 of {len(df):,} parsed packet records.")
+        with evidence_tabs[1]:
+            if "flow" in df.columns:
+                flow_df = df.groupby("flow", dropna=False).agg(
+                    Packets=("event_id", "count"),
+                    Bytes=("packet_length", "sum"),
+                    Protocol=("protocol", "first"),
+                    Service=("service", "first"),
+                ).reset_index().sort_values("Packets", ascending=False)
+                st.dataframe(flow_df.head(100), use_container_width=True, hide_index=True)
+            else:
+                st.info("Flow information is not available.")
+        with evidence_tabs[2]:
+            st.dataframe(flows.head(100), use_container_width=True, hide_index=True)
+
+    st.markdown('<div class="section-title">🛡️ Human Approval Gate</div>', unsafe_allow_html=True)
+    st.warning("The Response & Automation agent only prepared recommendations. NEXUS does not automatically block, isolate, modify, delete, SSH, or change production systems.")
+    reviewed = st.checkbox("I have reviewed the investigation findings and response recommendations.", key="pcap_investigation_reviewed")
+    if reviewed:
+        st.success("Human review recorded in this session. No external action was executed.")
+
 def agent_monitor(job_id: str | None):
     snapshot = get_snapshot(job_id) if job_id else None
     st.markdown('<div class="section-title">🤖 AI Agent Command Center</div>', unsafe_allow_html=True)
@@ -678,16 +791,19 @@ else:
         result = st.session_state.workflow_result
         if result:
             st.divider()
-            st.subheader("📋 Investigation Results")
-            tabs = st.tabs(["Investigation Coordinator", "Security Analysis", "Threat Intelligence", "Risk & Business", "Response Plan"])
-            outputs = [result["orchestrator"], result["security_analysis"], result["threat_intelligence"], result["risk_business"], result["response_automation"]]
-            for tab, output in zip(tabs, outputs):
-                with tab:
-                    st.markdown(output)
+            if df.attrs.get("nexus_dataset_type") == "pcap":
+                render_pcap_investigation_results(df, result)
+            else:
+                st.subheader("📋 Investigation Results")
+                tabs = st.tabs(["Investigation Coordinator", "Security Analysis", "Threat Intelligence", "Risk & Business", "Response Plan"])
+                outputs = [result["orchestrator"], result["security_analysis"], result["threat_intelligence"], result["risk_business"], result["response_automation"]]
+                for tab, output in zip(tabs, outputs):
+                    with tab:
+                        st.markdown(output)
 
-            st.divider()
-            st.subheader("🔐 Human Approval Gate")
-            st.warning("The response stage only prepared recommendations. NEXUS does not automatically block, isolate, modify, delete, SSH, or change production systems.")
-            approve = st.checkbox("I have reviewed the response recommendations and want to mark this case as human-reviewed.")
-            if approve:
-                st.success("Human review recorded in this session. No external action was executed.")
+                st.divider()
+                st.subheader("🔐 Human Approval Gate")
+                st.warning("The response stage only prepared recommendations. NEXUS does not automatically block, isolate, modify, delete, SSH, or change production systems.")
+                approve = st.checkbox("I have reviewed the response recommendations and want to mark this case as human-reviewed.")
+                if approve:
+                    st.success("Human review recorded in this session. No external action was executed.")
