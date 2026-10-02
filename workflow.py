@@ -1,8 +1,15 @@
 """
-NEXUS Cyber AI — Workflow definitions.
+NEXUS Cyber AI — Workflow.
 
-Milestone 2: CrewAI workflow is intentionally not activated yet.
+Milestone 3:
+The five agents are defined in agents.py, but the multi-agent workflow is
+intentionally not executed yet.
+
+Milestone 4 will add CrewAI Tasks/Crew/Flow and the live Streamlit agent-status
+panel, including the currently working agent and handoffs.
 """
 
 def run_workflow():
-    raise NotImplementedError("CrewAI workflow will be added after the data layer is validated.")
+    raise NotImplementedError(
+        "CrewAI multi-agent workflow will be implemented in Milestone 4."
+    )

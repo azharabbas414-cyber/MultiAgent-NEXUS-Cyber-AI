@@ -6,8 +6,8 @@ from data_loader import (
     load_uploaded_file,
     load_from_url,
     prepare_dataset,
-    inspect_dataset,
 )
+from agents import AGENT_NAMES, agent_status_template
 
 st.set_page_config(
     page_title=APP_NAME,
@@ -18,13 +18,13 @@ st.set_page_config(
 st.title("🛡️ NEXUS Cyber AI")
 st.caption(APP_FULL_NAME)
 
-st.markdown("## Milestone 2 — Data Sources & Data Inspection")
+st.markdown("## Milestone 3 — Five AI Agents")
 
 with st.sidebar:
     st.header("Navigation")
     page = st.radio(
         "Select module",
-        ["Data Sources", "Data Inspector"],
+        ["Data Sources", "Data Inspector", "AI Agents"],
         index=0,
     )
 
@@ -52,7 +52,6 @@ if page == "Data Sources":
             "Upload a CSV, Excel or JSON file",
             type=["csv", "xlsx", "xls", "json"],
         )
-
         if uploaded is not None and st.button("Load & Inspect File", type="primary"):
             try:
                 df = load_uploaded_file(uploaded)
@@ -70,8 +69,6 @@ if page == "Data Sources":
             "Public file URL",
             placeholder="https://example.com/security_data.csv",
         )
-        st.caption("Supported public file formats: CSV, Excel and JSON.")
-
         if st.button("Load & Inspect URL", type="primary"):
             if not url.strip():
                 st.warning("Enter a URL first.")
@@ -92,10 +89,6 @@ if page == "Data Sources":
             "Public Google Drive file link",
             placeholder="https://drive.google.com/file/d/...",
         )
-        st.caption(
-            "The Drive file must be publicly accessible. Google Sheets will be added later."
-        )
-
         if st.button("Load & Inspect Google Drive File", type="primary"):
             if not drive_url.strip():
                 st.warning("Enter a Google Drive link first.")
@@ -113,7 +106,6 @@ if page == "Data Sources":
 
     st.divider()
     st.subheader("🧪 Quick Test")
-
     if st.button("Load NEXUS Sample Security Dataset"):
         try:
             df = pd.read_csv(SAMPLE_DATA_PATH)
@@ -147,7 +139,6 @@ elif page == "Data Inspector":
         c4.metric("Duplicate Rows", report["duplicate_rows"])
 
         st.divider()
-
         st.subheader("Security Dataset Detection")
 
         if report["security_dataset"]:
@@ -161,14 +152,10 @@ elif page == "Data Inspector":
             )
 
         detected = report["detected_security_fields"]
-        if detected:
-            st.write("**Detected security fields:**")
-            st.write(", ".join(detected))
-        else:
-            st.write("No standard security fields detected.")
+        st.write("**Detected security fields:**")
+        st.write(", ".join(detected) if detected else "None")
 
         st.divider()
-
         st.subheader("Data Quality")
 
         q1, q2, q3 = st.columns(3)
@@ -188,7 +175,6 @@ elif page == "Data Inspector":
             q3.warning(f"⚠ Duplicate rows: {report['duplicate_rows']}")
 
         st.divider()
-
         st.subheader("Standardized Column Mapping")
         if report["column_mapping"]:
             mapping_df = pd.DataFrame(
@@ -204,8 +190,40 @@ elif page == "Data Inspector":
         st.subheader("Dataset Preview")
         st.dataframe(df.head(50), use_container_width=True)
 
-        st.subheader("Ready for AI Analysis")
         if report["security_dataset"] and report["invalid_ips"] == 0 and report["invalid_timestamps"] == 0:
             st.success("🟢 READY FOR AI ANALYSIS")
         else:
             st.warning("🟡 REVIEW DATA QUALITY BEFORE AI ANALYSIS")
+
+else:
+    st.subheader("🤖 Five AI Agents")
+    st.info(
+        "Milestone 3 defines the five CrewAI agents. "
+        "They are not executing yet; workflow execution comes in Milestone 4."
+    )
+
+    status = agent_status_template()
+
+    for item in status:
+        left, right = st.columns([2, 1])
+        left.markdown(f"**{item['name']}**")
+        right.write("⏳ " + item["status"])
+
+    st.divider()
+    st.subheader("Agent Responsibilities")
+
+    descriptions = {
+        "SOC Orchestrator Agent": "Coordinates the investigation, delegates tasks, tracks handoffs and approvals.",
+        "Security Analysis Agent": "Correlates security events, reconstructs timelines and identifies suspicious activity.",
+        "Threat Intelligence Agent": "Investigates IPs, domains, URLs, hashes and other indicators using available knowledge.",
+        "Risk & Business Agent": "Maps technical findings to asset, service and business impact.",
+        "Response & Automation Agent": "Prepares reports, tickets, response plans and escalation artifacts for human approval.",
+    }
+
+    for name in AGENT_NAMES:
+        st.markdown(f"**{name}** — {descriptions[name]}")
+
+    st.warning(
+        "Live WORKING status, progress, handoffs and current-agent highlighting "
+        "will be connected to the actual CrewAI workflow in Milestone 4."
+    )

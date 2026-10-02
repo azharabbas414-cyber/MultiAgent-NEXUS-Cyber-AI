@@ -2,50 +2,41 @@
 
 **NEXUS = Network EXpert Unified Security**
 
-## Milestone 2 — Data Sources & Data Inspection
+## Milestone 3 — Five AI Agents
 
-This milestone extends the fresh Milestone 1 foundation with a Streamlit-based data layer.
+Milestone 3 adds the five CrewAI agent definitions while keeping workflow execution disabled until Milestone 4.
 
-### Current capabilities
+### Five agents
 
-- Local CSV upload
-- Local Excel upload
-- Local JSON upload
-- Public direct URL loading
-- Public Google Drive file loading
-- Automatic file-format detection
-- Security-field detection
-- Common security-column standardization
-- Data-quality inspection
-- Security dataset confidence indicator
-- Dataset preview
-- Built-in sample-data test
+1. **SOC Orchestrator Agent** — coordinates investigations, delegation, handoffs and approvals.
+2. **Security Analysis Agent** — analyzes and correlates security events.
+3. **Threat Intelligence Agent** — investigates indicators and threat context.
+4. **Risk & Business Agent** — maps findings to business impact.
+5. **Response & Automation Agent** — prepares response artifacts and recommendations.
 
-### Supported security-field normalization
+### Safety boundary
 
-Examples:
+Agents do not directly:
+- SSH to production devices
+- change firewall/router configuration
+- modify production endpoints
+- delete accounts
+- automatically block indicators
+- execute irreversible response actions
 
-```text
-src_ip / source_address / SourceIP
-        ↓
-    source_ip
+The workflow will remain human-controlled.
 
-username / usr / User
-        ↓
-       user
+### UI requirement
 
-hostname / host / Host_Name
-        ↓
-      asset
+The final multi-agent UI will show:
+- all five agents
+- current status of each agent
+- currently working agent
+- workflow handoffs
+- task/progress information
+- human approval state
 
-priority / alert_severity
-        ↓
-     severity
-```
-
-### Google Sheets
-
-Google Sheets is intentionally **not implemented in Milestone 2**. It will be added after the current data-source flow is validated.
+The live working-agent panel is connected in Milestone 4 when the actual CrewAI workflow is introduced.
 
 ### Run
 
@@ -53,7 +44,3 @@ Google Sheets is intentionally **not implemented in Milestone 2**. It will be ad
 pip install -r requirements.txt
 streamlit run app.py
 ```
-
-### Safety
-
-No live network/device integration is present. Data processing is read-only and intended for synthetic/demo security data.
