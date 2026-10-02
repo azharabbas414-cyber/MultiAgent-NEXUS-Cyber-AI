@@ -246,7 +246,7 @@ if page == "SOC Dashboard":
                     paper_bgcolor="#eef5fb",
                     plot_bgcolor="#eef5fb",
                 )
-                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": True, "displaylogo": False})
+                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
         # Chart 1: event timeline
         timeline = pd.DataFrame()
