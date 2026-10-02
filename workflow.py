@@ -54,6 +54,17 @@ def build_llm(config: dict[str, str] | None = None) -> LLM:
         )
     model = config.get("model") or os.getenv("GROK_MODEL", "openai/gpt-oss-120b")
     base_url = config.get("base_url") or os.getenv("GROK_BASE_URL", "https://api.groq.com/openai/v1")
+
+    # CrewAI's custom_openai mode strips one leading ``openai/`` prefix
+    # before sending the request. Groq's GPT-OSS model ID itself requires
+    # that prefix, so preserve it on the wire by adding one extra prefix.
+    # This turns ``openai/gpt-oss-120b`` into ``openai/openai/gpt-oss-120b``
+    # for CrewAI, which then sends the required ``openai/gpt-oss-120b``.
+    if "api.groq.com/openai/v1" in base_url and model == "openai/gpt-oss-120b":
+        model = "openai/openai/gpt-oss-120b"
+    elif "api.groq.com/openai/v1" in base_url and model == "gpt-oss-120b":
+        model = "openai/openai/gpt-oss-120b"
+
     return LLM(
         model=model,
         custom_openai=True,
