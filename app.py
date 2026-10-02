@@ -58,7 +58,7 @@ with st.sidebar:
     st.header("Navigation")
     page = st.radio(
         "Select module",
-        ["SOC Dashboard", "Data Sources", "Data Inspector", "Incidents", "AI SOC Command Center", "SOC Investigation"],
+        ["SOC Dashboard", "Data Sources", "Data Inspector", "AI SOC Command Center", "SOC Investigation"],
         key="page",
     )
     st.divider()
@@ -292,44 +292,26 @@ elif page == "Data Inspector":
             st.dataframe(mapping_df, use_container_width=True)
         else:
             st.info("No column renaming was required.")
+        st.subheader("Incident Summary")
+        if "incident_id" in df.columns:
+            incident_summary = df.groupby("incident_id").agg(
+                Events=("event_id", "count"),
+                Highest_Severity=("severity", lambda s: "critical" if "critical" in s.astype(str).str.lower().values else ("high" if "high" in s.astype(str).str.lower().values else ("medium" if "medium" in s.astype(str).str.lower().values else str(s.iloc[0])))),
+                Assets=("asset", lambda s: ", ".join(pd.unique(s.astype(str))[:3])) if "asset" in df.columns else ("event_id", "count"),
+                Users=("user", lambda s: ", ".join(pd.unique(s.astype(str))[:3])) if "user" in df.columns else ("event_id", "count"),
+                Services=("business_service", lambda s: ", ".join(pd.unique(s.astype(str))[:3])) if "business_service" in df.columns else ("event_id", "count"),
+            ).reset_index()
+            st.dataframe(incident_summary.sort_values("Events", ascending=False), use_container_width=True, hide_index=True)
+            st.caption("Use SOC Investigation to select an incident and run the five-agent AI investigation. This section is for inspection only.")
+        else:
+            st.info("No incident_id field is available in this dataset.")
+        st.divider()
         st.subheader("Dataset Preview")
         st.dataframe(df.head(50), use_container_width=True)
         if report["security_dataset"] and report["invalid_ips"] == 0 and report["invalid_timestamps"] == 0:
             st.success("🟢 READY FOR AI ANALYSIS")
         else:
             st.warning("🟡 REVIEW DATA QUALITY BEFORE AI ANALYSIS")
-
-# -----------------------------
-# Incidents
-# -----------------------------
-elif page == "Incidents":
-    st.subheader("🚨 Incident Queue")
-    st.caption("Incident triage view. Select an incident to inspect it through the five-agent workflow.")
-    df = get_dashboard_df()
-    if df is None or df.empty or "incident_id" not in df.columns:
-        st.warning("No incident-capable security dataset is available.")
-    else:
-        summary = df.groupby("incident_id").agg(
-            Events=("event_id", "count"),
-            Highest_Severity=("severity", lambda s: "critical" if "critical" in s.astype(str).str.lower().values else ("high" if "high" in s.astype(str).str.lower().values else str(s.iloc[0]))),
-            Assets=("asset", lambda s: ", ".join(pd.unique(s.astype(str))[:2])),
-            Users=("user", lambda s: ", ".join(pd.unique(s.astype(str))[:2])),
-            Services=("business_service", lambda s: ", ".join(pd.unique(s.astype(str))[:2])),
-        ).reset_index()
-        st.dataframe(summary.sort_values(["Highest_Severity", "Events"], ascending=[True, False]), use_container_width=True, hide_index=True)
-        st.divider()
-        incident_id = st.selectbox("Select incident", summary["incident_id"].astype(str).tolist(), index=0)
-        st.session_state.selected_incident = incident_id
-        evidence = df[df["incident_id"].astype(str) == incident_id]
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Evidence Events", len(evidence))
-        c2.metric("Assets", evidence["asset"].nunique() if "asset" in evidence.columns else 0)
-        c3.metric("Users", evidence["user"].nunique() if "user" in evidence.columns else 0)
-        c4.metric("Threat Types", evidence["threat_type"].nunique() if "threat_type" in evidence.columns else 0)
-        st.dataframe(evidence, use_container_width=True, hide_index=True)
-        if st.button("🔎 Investigate Selected Incident", type="primary"):
-            st.session_state.page = "SOC Investigation"
-            st.rerun()
 
 # -----------------------------
 # AI SOC Command Center

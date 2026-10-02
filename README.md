@@ -66,10 +66,11 @@ Milestone 5 adds the operational Streamlit SOC experience on top of the verified
 
 - SOC Dashboard with security-event, incident, severity and asset KPIs
 - Severity and event-type visualizations
-- Incident Queue with evidence preview and one-click investigation handoff
+- Data Inspector incident summary with evidence-oriented dataset inspection
 - AI SOC Command Center replacing the old static agent-definition page
 - Live agent status and latest investigation outputs
 - Existing Data Sources, Data Inspector and SOC Investigation preserved
+- Separate Incidents page removed to avoid duplicating SOC Investigation
 - Human approval remains required for consequential response actions
 
 No production network/device/endpoint changes are executed by NEXUS.
