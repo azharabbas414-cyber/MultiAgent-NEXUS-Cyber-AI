@@ -50,6 +50,91 @@ def _clean_name(name: Any) -> str:
     return value
 
 
+
+def _read_pcap_bytes(data: bytes, filename: str) -> pd.DataFrame:
+    """Parse PCAP/PCAPNG bytes into a security-event style dataframe."""
+    try:
+        from scapy.layers.inet import ICMP, IP, TCP, UDP
+        from scapy.layers.inet6 import IPv6
+        from scapy.utils import PcapNgReader, PcapReader
+    except ImportError as exc:
+        raise ValueError("PCAP support requires the 'scapy' package.") from exc
+
+    import tempfile
+
+    suffix = Path(filename).suffix.lower()
+    with tempfile.NamedTemporaryFile(suffix=suffix or ".pcap") as tmp:
+        tmp.write(data)
+        tmp.flush()
+
+        # PCAPNG files start with 0x0A0D0D0A. Classic PCAP files use
+        # one of the standard four-byte magic values.
+        magic = data[:4]
+        reader_cls = PcapNgReader if magic == b"\\x0a\\x0d\\x0d\\x0a" else PcapReader
+
+        rows = []
+        capture_id = Path(filename).stem or "capture"
+        for index, packet in enumerate(reader_cls(tmp.name), start=1):
+            timestamp = float(packet.time) if hasattr(packet, "time") else None
+            src = dst = ""
+            protocol = "Other"
+            source_port = destination_port = None
+            flags = ""
+
+            if packet.haslayer(IP):
+                layer = packet[IP]
+                src, dst = layer.src, layer.dst
+            elif packet.haslayer(IPv6):
+                layer = packet[IPv6]
+                src, dst = layer.src, layer.dst
+
+            if packet.haslayer(TCP):
+                transport = packet[TCP]
+                protocol = "TCP"
+                source_port = int(transport.sport)
+                destination_port = int(transport.dport)
+                flags = str(transport.flags)
+            elif packet.haslayer(UDP):
+                transport = packet[UDP]
+                protocol = "UDP"
+                source_port = int(transport.sport)
+                destination_port = int(transport.dport)
+            elif packet.haslayer(ICMP):
+                protocol = "ICMP"
+
+            if not src and not dst:
+                if packet.haslayer("ARP"):
+                    protocol = "ARP"
+                elif packet.haslayer("Ether"):
+                    protocol = "Ethernet"
+
+            rows.append({
+                "timestamp": pd.to_datetime(timestamp, unit="s", errors="coerce"),
+                "event_id": f"PCAP-{index:06d}",
+                "event_type": "network_packet",
+                "source_ip": src or "unknown",
+                "destination_ip": dst or "unknown",
+                "user": "",
+                "asset": dst or "unknown",
+                "severity": "info",
+                "action": "observed",
+                "indicator": "",
+                "threat_type": protocol,
+                "business_service": "Network Traffic",
+                "business_criticality": "unknown",
+                "incident_id": f"PCAP-{capture_id}",
+                "protocol": protocol,
+                "source_port": source_port,
+                "destination_port": destination_port,
+                "packet_length": int(len(packet)),
+                "tcp_flags": flags,
+            })
+
+    if not rows:
+        raise ValueError("The PCAP file contains no packets.")
+
+    return pd.DataFrame(rows)
+
 def detect_format(filename: str | None = None, content_type: str | None = None) -> str:
     """Detect supported file format from filename or HTTP content type."""
     name = (filename or "").lower()
@@ -61,6 +146,8 @@ def detect_format(filename: str | None = None, content_type: str | None = None) 
         return "JSON"
     if suffix == ".csv":
         return "CSV"
+    if suffix in {".pcap", ".pcapng", ".cap"}:
+        return "PCAP"
 
     ctype = (content_type or "").lower()
     if "spreadsheet" in ctype or "excel" in ctype:
@@ -69,6 +156,8 @@ def detect_format(filename: str | None = None, content_type: str | None = None) 
         return "JSON"
     if "csv" in ctype or "text/plain" in ctype:
         return "CSV"
+    if "pcap" in ctype or "capture" in ctype:
+        return "PCAP"
 
     return "Unknown"
 
@@ -80,6 +169,8 @@ def _read_bytes(data: bytes, filename: str, file_format: str = "Unknown") -> pd.
         return pd.read_csv(io.BytesIO(data))
     if fmt == "Excel":
         return pd.read_excel(io.BytesIO(data))
+    if fmt == "PCAP":
+        return _read_pcap_bytes(data, filename)
     if fmt == "JSON":
         try:
             return pd.read_json(io.BytesIO(data))
@@ -104,7 +195,7 @@ def _read_bytes(data: bytes, filename: str, file_format: str = "Unknown") -> pd.
         except Exception:
             continue
 
-    raise ValueError("Could not determine the file format. Use CSV, Excel, or JSON.")
+    raise ValueError("Could not determine the file format. Use CSV, Excel, JSON, or PCAP/PCAPNG.")
 
 
 def load_uploaded_file(uploaded_file) -> pd.DataFrame:

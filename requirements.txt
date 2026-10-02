@@ -6,3 +6,4 @@ python-dotenv
 crewai[openai]>=1.15.17,<2.0
 
 plotly>=5.24,<7.0
+scapy>=2.6,<3.0

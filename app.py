@@ -323,12 +323,12 @@ if page == "SOC Dashboard":
 # -----------------------------
 elif page == "Data Sources":
     st.subheader("📥 Load Security Data")
-    st.write("NEXUS can load CSV, Excel and JSON datasets.")
+    st.write("NEXUS can load CSV, Excel, JSON and PCAP/PCAPNG security data.")
 
     source = st.radio("Data source", ["Local File", "Direct URL", "Google Drive"], horizontal=True)
 
     if source == "Local File":
-        uploaded = st.file_uploader("Upload a CSV, Excel or JSON file", type=["csv", "xlsx", "xls", "json"])
+        uploaded = st.file_uploader("Upload a CSV, Excel, JSON or PCAP/PCAPNG file", type=["csv", "xlsx", "xls", "json", "pcap", "pcapng", "cap"])
         if uploaded is not None and st.button("Load & Inspect File", type="primary"):
             try:
                 df = load_uploaded_file(uploaded)

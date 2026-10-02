@@ -12,7 +12,7 @@ DEFAULT_GROK_BASE_URL = "https://api.groq.com/openai/v1"
 SAMPLE_DATA_PATH = "data/sample_data/security_data.csv"
 KNOWLEDGE_PATH = "knowledge"
 
-SUPPORTED_EXTENSIONS = [".csv", ".xlsx", ".xls", ".json"]
+SUPPORTED_EXTENSIONS = [".csv", ".xlsx", ".xls", ".json", ".pcap", ".pcapng", ".cap"]
 SECURITY_FIELDS = [
     "timestamp", "event_id", "event_type", "source_ip", "destination_ip",
     "user", "asset", "severity", "action", "indicator", "threat_type",
