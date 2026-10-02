@@ -103,6 +103,21 @@ def _dataset_context(df: Any, incident_id: str) -> str:
         if len(filtered) > 0:
             work = filtered
 
+    # For PCAPs, send compact malware/artifact intelligence in addition to
+    # representative packet rows. This avoids wasting LLM tokens on thousands
+    # of near-duplicate packets while preserving the evidence needed for
+    # malware identification.
+    if getattr(df, "attrs", {}).get("nexus_dataset_type") == "pcap":
+        summary = getattr(df, "attrs", {}).get("pcap_summary", {})
+        malware = getattr(df, "attrs", {}).get("pcap_malware", summary.get("malware_analysis", {}))
+        packet_sample = work.head(40).where(work.head(40).notna(), None).to_dict(orient="records")
+        payload = {
+            "pcap_summary": summary,
+            "malware_analysis": malware,
+            "representative_packets": packet_sample,
+        }
+        return _clip(json.dumps(payload, indent=2, default=str), 5000)
+
     # Keep prompts bounded while preserving all columns needed for analysis.
     work = work.head(100)
     records = work.where(work.notna(), None).to_dict(orient="records")
@@ -190,8 +205,11 @@ Produce:
 1. Observed facts
 2. Event/timeline correlation
 3. Suspicious indicators or behaviors
-4. Gaps/uncertainties
-5. Technical conclusion
+4. Malware/artifact evidence, if present
+5. Gaps/uncertainties
+6. Technical conclusion
+
+For PCAP evidence, distinguish an observed executable/artifact from a confirmed malware family. Never invent a malware name.
 
 Do not claim an IOC is malicious unless the evidence supports that conclusion.
 """,
@@ -222,13 +240,14 @@ Security Analysis:
 Local threat intelligence knowledge:
 {_clip(self.state.knowledge_context, 2200)}
 
-For each relevant indicator, state whether it is:
+For each relevant indicator or artifact, state whether it is:
 - supported by local knowledge,
+- supported by supplied hash-based threat intelligence,
 - unsupported/unknown, or
 - contradicted by the available evidence.
 
-Do not invent external reputation data. A knowledge match is supporting evidence,
-not automatic proof of compromise.
+If malware_analysis contains a confirmed hash reputation result, report the returned threat label and its evidence. If no confirmed result exists, explicitly say that the malware family/name could not be determined.
+Do not invent external reputation data. A knowledge match is supporting evidence, not automatic proof of compromise.
 """,
             "Indicator-by-indicator threat context with evidence and confidence/uncertainty.",
             self._llm,

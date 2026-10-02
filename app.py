@@ -1,3 +1,4 @@
+import os
 import time
 from pathlib import Path
 
@@ -12,14 +13,21 @@ from workflow_jobs import create_job, get_snapshot
 
 st.set_page_config(page_title=APP_NAME, page_icon="🛡️", layout="wide", initial_sidebar_state="expanded")
 
+# Optional hash-only threat-intelligence secret. No PCAP file is uploaded to the provider.
+try:
+    if str(st.secrets.get("VT_API_KEY", "")).strip():
+        os.environ["VT_API_KEY"] = str(st.secrets.get("VT_API_KEY"))
+except Exception:
+    pass
+
 # -----------------------------
 # Styling
 # -----------------------------
 st.markdown(
     """
     <style>
-    .block-container {padding-top: 1.2rem; padding-bottom: 2rem;}
-    .nexus-title {font-size: 2.1rem; font-weight: 750; margin-bottom: 0.1rem;}
+    .block-container {padding-top: 1.8rem; padding-bottom: 2rem;}
+    .nexus-title {font-size: 2.1rem; font-weight: 750; line-height: 1.3; padding-top: 0.25rem; margin-bottom: 0.1rem; overflow: visible;}
     .nexus-subtitle {color: #667085; margin-bottom: 1.1rem;}
     .section-title {font-size: 1.35rem; font-weight: 700; margin-top: .4rem; margin-bottom: .7rem;}
     .status-card {border: 1px solid #e6e8ec; border-radius: 12px; padding: 14px 16px; background: #ffffff;}
@@ -184,6 +192,63 @@ def render_pcap_summary(df: pd.DataFrame) -> None:
 
 
 
+def render_pcap_malware_analysis(df: pd.DataFrame) -> None:
+    """Show safe artifact/hash-based malware evidence from the PCAP."""
+    malware = df.attrs.get("pcap_malware", {})
+    if not malware:
+        summary = df.attrs.get("pcap_summary", {})
+        malware = summary.get("malware_analysis", {})
+
+    st.markdown('<div class="section-title">🦠 Malware & Artifact Analysis</div>', unsafe_allow_html=True)
+    status = malware.get("status", "No malware analysis available")
+    exact_names = malware.get("exact_malware_names", [])
+    a1, a2, a3, a4 = st.columns(4)
+    a1.metric("Artifacts", f"{malware.get('artifact_count', 0):,}")
+    a2.metric("Executable Candidates", f"{malware.get('executable_count', 0):,}")
+    a3.metric("Confirmed Hash Matches", f"{malware.get('confirmed_count', 0):,}")
+    a4.metric("Malware Names", f"{len(exact_names):,}")
+
+    if exact_names:
+        st.success("Confirmed malware/threat labels from hash intelligence: " + ", ".join(exact_names))
+    elif malware.get("executable_count", 0):
+        st.warning("Executable artifact(s) were identified, but the exact malware family/name is not confirmed from the available evidence.")
+    else:
+        st.info("No recoverable executable artifact was identified in the captured traffic. Encrypted or incomplete traffic may prevent exact malware identification.")
+
+    st.caption(f"Analysis status: **{status}**. NEXUS never executes recovered files and never guesses a malware family name.")
+
+    artifacts = malware.get("artifacts", [])
+    if not artifacts:
+        return
+
+    rows = []
+    for item in artifacts:
+        ti = item.get("threat_intelligence", {}) or {}
+        rows.append({
+            "Artifact": item.get("artifact_id"),
+            "Type": item.get("type"),
+            "Size": item.get("size"),
+            "SHA-256": item.get("sha256"),
+            "Threat Label": ti.get("threat_label", "Not confirmed"),
+            "TI Status": ti.get("status", "not_configured"),
+            "Source → Destination": f"{item.get('source_ip')} → {item.get('destination_ip')}",
+        })
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+    for item in artifacts:
+        with st.expander(f"{item.get('artifact_id')} · {item.get('type')} · {item.get('sha256', '')[:16]}…"):
+            st.write(f"**Flow:** {item.get('flow')}")
+            st.write(f"**SHA-256:** `{item.get('sha256')}`")
+            ti = item.get("threat_intelligence", {}) or {}
+            st.write(f"**Threat intelligence:** {ti.get('message', 'No lookup performed.')}")
+            if ti.get("threat_label") and ti.get("threat_label") != "Unknown":
+                st.success(f"**Threat label:** {ti['threat_label']}")
+            strings = item.get("strings", [])
+            if strings:
+                st.write("**Selected printable strings:**")
+                st.code("\n".join(strings[:12]))
+
+
 def render_pcap_investigation_results(df: pd.DataFrame, result: dict) -> None:
     """Render the post-SOC-investigation dashboard for a PCAP dataset."""
     if df.attrs.get("nexus_dataset_type") != "pcap":
@@ -206,6 +271,8 @@ def render_pcap_investigation_results(df: pd.DataFrame, result: dict) -> None:
     kpis[5].metric("Services", f"{len(services):,}")
 
     st.caption(f"Source PCAP: **{df.attrs.get('pcap_filename', st.session_state.dataset_name or 'uploaded capture')}**")
+
+    render_pcap_malware_analysis(df)
 
     st.markdown('<div class="section-title">🤖 Five-Agent Investigation Findings</div>', unsafe_allow_html=True)
     finding_tabs = st.tabs(["🎯 Coordinator", "🔍 Security", "🌐 Threat Intel", "⚠️ Risk & Business", "🛠️ Response"])
@@ -278,18 +345,12 @@ def render_pcap_investigation_results(df: pd.DataFrame, result: dict) -> None:
             st.caption(f"Showing the first 250 of {len(df):,} parsed packet records.")
         with evidence_tabs[1]:
             if "flow" in df.columns:
-                # Build the flow table defensively because PCAP parsers/older cached
-                # datasets may not contain every optional packet column.
-                group = df.groupby("flow", dropna=False)
-                flow_data = {"Packets": group.size()}
-                if "packet_length" in df.columns:
-                    flow_data["Bytes"] = group["packet_length"].sum()
-                if "protocol" in df.columns:
-                    flow_data["Protocol"] = group["protocol"].first()
-                if "service" in df.columns:
-                    flow_data["Service"] = group["service"].first()
-                flow_df = pd.DataFrame(flow_data).reset_index()
-                flow_df = flow_df.sort_values("Packets", ascending=False)
+                flow_df = df.groupby("flow", dropna=False).agg(
+                    Packets=("event_id", "count"),
+                    Bytes=("packet_length", "sum"),
+                    Protocol=("protocol", "first"),
+                    Service=("service", "first"),
+                ).reset_index().sort_values("Packets", ascending=False)
                 st.dataframe(flow_df.head(100), use_container_width=True, hide_index=True)
             else:
                 st.info("Flow information is not available.")

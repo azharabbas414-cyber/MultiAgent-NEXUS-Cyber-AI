@@ -44,3 +44,18 @@ Ollama must be running where NEXUS is running. It is generally not usable from S
 ## Safety boundary
 
 NEXUS only analyzes supplied/synthetic data and prepares recommendations/reports. It does not SSH to production devices, change firewalls/routers/endpoints, delete accounts, block traffic, or execute consequential response actions.
+
+
+## PCAP Malware & Artifact Analysis
+
+NEXUS performs safe, offline-first artifact analysis when a PCAP is uploaded. It looks for common executable/archive/document signatures in TCP payloads, calculates SHA-256 hashes, and displays evidence without executing recovered content.
+
+For optional exact hash-based threat labels, configure the Streamlit secret:
+
+```toml
+VT_API_KEY = "YOUR_VIRUSTOTAL_API_KEY"
+```
+
+Only the SHA-256 hash is sent for the optional reputation lookup; the recovered file itself is not uploaded by NEXUS. If the hash is not known, the application reports that the malware family/name is unconfirmed rather than guessing.
+
+This feature is intentionally evidence-driven: an executable artifact is not automatically treated as malware.
