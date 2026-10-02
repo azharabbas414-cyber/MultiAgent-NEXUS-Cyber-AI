@@ -2,21 +2,38 @@
 
 **NEXUS = Network EXpert Unified Security**
 
-## Milestone 3 — Five AI Agents
+## Milestone 4 — Multi-Agent SOC Workflow
 
-Milestone 3 adds the five CrewAI agent definitions while keeping workflow execution disabled until Milestone 4.
+Milestone 4 connects the five CrewAI agents into a structured, sequential investigation flow:
 
-### Five agents
+1. SOC Orchestrator
+2. Security Analysis
+3. Threat Intelligence
+4. Risk & Business
+5. Response & Automation
 
-1. **SOC Orchestrator Agent** — coordinates investigations, delegation, handoffs and approvals.
-2. **Security Analysis Agent** — analyzes and correlates security events.
-3. **Threat Intelligence Agent** — investigates indicators and threat context.
-4. **Risk & Business Agent** — maps findings to business impact.
-5. **Response & Automation Agent** — prepares response artifacts and recommendations.
+The Streamlit UI shows the current agent, status, progress and handoffs while the workflow runs.
 
-### Safety boundary
+## Model configuration
 
-Agents do not directly:
+The workflow uses an OpenAI-compatible endpoint and defaults to Groq's `openai/gpt-oss-120b` model. CrewAI's current documentation supports custom OpenAI-compatible endpoints through `custom_openai=True` and `base_url`.
+
+Streamlit Secrets:
+
+```toml
+GROK_API_KEY = "your_groq_api_key"
+```
+
+Optional:
+
+```toml
+GROK_MODEL = "openai/gpt-oss-120b"
+GROK_BASE_URL = "https://api.groq.com/openai/v1"
+```
+
+## Safety boundary
+
+NEXUS is read-only and human-controlled. Agents do not directly:
 - SSH to production devices
 - change firewall/router configuration
 - modify production endpoints
@@ -24,23 +41,11 @@ Agents do not directly:
 - automatically block indicators
 - execute irreversible response actions
 
-The workflow will remain human-controlled.
+The Response & Automation Agent only prepares response artifacts for human review.
 
-### UI requirement
-
-The final multi-agent UI will show:
-- all five agents
-- current status of each agent
-- currently working agent
-- workflow handoffs
-- task/progress information
-- human approval state
-
-The live working-agent panel is connected in Milestone 4 when the actual CrewAI workflow is introduced.
-
-### Run
+## Run
 
 ```bash
-pip install -r requirements.txt
-streamlit run app.py
+python3 -m pip install -r requirements.txt
+python3 -m streamlit run app.py
 ```

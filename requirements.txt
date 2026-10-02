@@ -3,4 +3,4 @@ pandas
 requests
 openpyxl
 python-dotenv
-crewai
+crewai[openai]>=1.15.17,<2.0
