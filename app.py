@@ -278,12 +278,18 @@ def render_pcap_investigation_results(df: pd.DataFrame, result: dict) -> None:
             st.caption(f"Showing the first 250 of {len(df):,} parsed packet records.")
         with evidence_tabs[1]:
             if "flow" in df.columns:
-                flow_df = df.groupby("flow", dropna=False).agg(
-                    Packets=("event_id", "count"),
-                    Bytes=("packet_length", "sum"),
-                    Protocol=("protocol", "first"),
-                    Service=("service", "first"),
-                ).reset_index().sort_values("Packets", ascending=False)
+                # Build the flow table defensively because PCAP parsers/older cached
+                # datasets may not contain every optional packet column.
+                group = df.groupby("flow", dropna=False)
+                flow_data = {"Packets": group.size()}
+                if "packet_length" in df.columns:
+                    flow_data["Bytes"] = group["packet_length"].sum()
+                if "protocol" in df.columns:
+                    flow_data["Protocol"] = group["protocol"].first()
+                if "service" in df.columns:
+                    flow_data["Service"] = group["service"].first()
+                flow_df = pd.DataFrame(flow_data).reset_index()
+                flow_df = flow_df.sort_values("Packets", ascending=False)
                 st.dataframe(flow_df.head(100), use_container_width=True, hide_index=True)
             else:
                 st.info("Flow information is not available.")
